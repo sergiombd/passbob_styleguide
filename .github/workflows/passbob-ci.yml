@@ -1,0 +1,39 @@
+# Passbob CI: lint and unit tests of the styleguide (the quickaccess and web app UI used by the extension).
+# The extension repository builds the installable extension from this repository.
+name: Passbob CI
+
+on:
+  push:
+    branches: [passbob]
+  pull_request:
+    branches: [passbob]
+  workflow_dispatch:
+
+concurrency:
+  group: passbob-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint:eslint
+
+      - name: Unit tests
+        run: npx jest --silent --maxWorkers=2 ./src
