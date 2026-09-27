@@ -1,0 +1,116 @@
+/**
+ * Passbolt ~ Open source password manager for teams
+ * Copyright (c) 2020 Passbolt SA (https://www.passbolt.com)
+ *
+ * Licensed under GNU Affero General Public License version 3 of the or any later version.
+ * For full copyright and license information, please see the LICENSE.txt
+ * Redistributions of files must retain the above copyright notice.
+ *
+ * @copyright     Copyright (c) 2020 Passbolt SA (https://www.passbolt.com)
+ * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
+ * @link          https://www.passbolt.com Passbolt(tm)
+ */
+import React from "react";
+import PropTypes from "prop-types";
+import { BOOTSTRAP_FEATURE } from "../../ExtQuickAccess";
+import { withActiveSessionLocalStorage } from "../../../shared/context/ActiveSession/ActiveSessionLocalStorageContext";
+import UserActiveSessionEntity from "../../../shared/models/entity/session/userActiveSessionEntity";
+import { withRouter } from "react-router-dom";
+import { withAppContext } from "../../../shared/context/AppContext/AppContext";
+
+/**
+ * This component takes care of redirect the user.
+ */
+class HandleBootstrapRoute extends React.Component {
+  /**
+   * Get the route to quickaccess should bootstrap on.
+   * @returns {string}
+   */
+  getBootstrapRoute() {
+    const activeSession = this.props.activeSession;
+    /*
+     * An authenticated offline session should persist: the user stays in the app whether or not the server
+     * is reachable.
+     */
+    if (activeSession.isAuthenticated && activeSession.isSessionOffline) {
+      return "/webAccessibleResources/quickaccess/home";
+    }
+    /*
+     * Server not reachable. This covers an authenticated online session that lost the network as well
+     * as an unauthenticated user with no reachable server: both land on the server unavailable screen,
+     * which decides what actions to offer (sign out locally, offline sign-in)
+     */
+    if (!activeSession.isServerReachable) {
+      return "/webAccessibleResources/quickaccess/server-not-reachable";
+    }
+
+    // Server reachable but user not authenticated: online login page.
+    if (!activeSession.isAuthenticated) {
+      return "/webAccessibleResources/quickaccess/login";
+    }
+
+    return this.getOnlineAuthenticatedRoute();
+  }
+
+  /**
+   * Get the route for an online authenticated user, based on the requested bootstrap feature.
+   * @returns {string}
+   */
+  getOnlineAuthenticatedRoute() {
+    switch (this.props.bootstrapFeature) {
+      case BOOTSTRAP_FEATURE.CREATE_NEW_CREDENTIALS:
+      case BOOTSTRAP_FEATURE.SAVE_CREDENTIALS:
+        return "/webAccessibleResources/quickaccess/resources/create";
+      case BOOTSTRAP_FEATURE.AUTOSAVE_CREDENTIALS:
+        return "/webAccessibleResources/quickaccess/resources/autosave";
+    }
+
+    return "/webAccessibleResources/quickaccess/home";
+  }
+
+  /**
+   * Renders the component
+   * @returns {JSX.Element}
+   */
+  /**
+   * Passbob: get the last view to restore, if any. Only for a plain opening of an online authenticated
+   * quickaccess, a bootstrap feature (create credentials, passphrase request...) always wins.
+   * @returns {{pathname: string, search: string}|null}
+   */
+  getLastViewToRestore() {
+    const activeSession = this.props.activeSession;
+    const isOnlineAuthenticated =
+      activeSession.isAuthenticated && !activeSession.isSessionOffline && activeSession.isServerReachable;
+    if (!isOnlineAuthenticated || this.props.bootstrapFeature || !this.props.lastView) {
+      return null;
+    }
+    return this.props.lastView;
+  }
+
+  render() {
+    const lastView = this.getLastViewToRestore();
+    if (!lastView) {
+      return this.props.history.push(this.getBootstrapRoute());
+    }
+    /*
+     * Rebuild the history as "home, then the restored page" so the pages' goBack() lands on the home page and never
+     * on this bootstrap route, which would restore the same page again.
+     */
+    const homeRoute = "/webAccessibleResources/quickaccess/home";
+    this.props.history.replace(homeRoute, { passbobRestoredSearch: lastView.search });
+    if (lastView.pathname !== homeRoute) {
+      this.props.history.push(lastView.pathname);
+    }
+    return null;
+  }
+}
+
+HandleBootstrapRoute.propTypes = {
+  context: PropTypes.any, // The application context
+  activeSession: PropTypes.instanceOf(UserActiveSessionEntity), // The user active session
+  history: PropTypes.object, // The history
+  bootstrapFeature: PropTypes.string, // The bootstrap feature
+  lastView: PropTypes.shape({ pathname: PropTypes.string, search: PropTypes.string }), // Passbob: the last view to restore
+};
+
+export default withRouter(withAppContext(withActiveSessionLocalStorage(HandleBootstrapRoute)));
