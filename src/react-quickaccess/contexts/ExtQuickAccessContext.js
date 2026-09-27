@@ -132,6 +132,7 @@ export class ExtQuickAccessContextProvider extends React.Component {
     return {
       storage: props.storage,
       port: props.port,
+      bootstrapFeature: props.bootstrapFeature, // Passbob: why the quickaccess was opened (in-form creation...)
       userSettings: null,
       /*
         Important:
