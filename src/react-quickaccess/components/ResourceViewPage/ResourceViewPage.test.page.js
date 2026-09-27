@@ -143,6 +143,30 @@ export default class ResourceViewPagePage {
   }
 
   /**
+   * The "Use on this page" / "Fill again" button.
+   * @returns {Element}
+   */
+  get useOnThisPageButton() {
+    return this._page.container.querySelector("#popupAction");
+  }
+
+  /**
+   * Passbob: the banner shown after the resource was filled on the page.
+   * @returns {Element}
+   */
+  get filledBanner() {
+    return this._page.container.querySelector(".passbob-filled-banner");
+  }
+
+  /**
+   * Passbob: the "Always close after filling" link of the filled banner.
+   * @returns {Element}
+   */
+  get alwaysCloseAfterFillLink() {
+    return this._page.container.querySelector(".passbob-filled-banner-action");
+  }
+
+  /**
    * Click on the given element.
    * @param {Element} element The element to click on.
    * @returns {Promise<void>}

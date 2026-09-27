@@ -44,6 +44,8 @@ import QuickAccessServerUnavailable from "./components/QuickAccessServerUnavaila
 import QuickAccessOfflineFooter from "./components/Offline/QuickAccessOfflineFooter";
 import OfflineLoginPage from "./components/Offline/OfflineLoginPage";
 import OfflineFooterDetailsPage from "./components/Offline/OfflineFooterDetailsPage";
+import PassbobRouteTracker from "./components/PassbobRouteTracker/PassbobRouteTracker";
+import PassbobStorageService from "../shared/services/passbob/passbobStorageService";
 
 const SEARCH_VISIBLE_ROUTES = [
   "/webAccessibleResources/quickaccess/home",
@@ -71,6 +73,7 @@ class ExtQuickAccess extends React.Component {
     this.state = this.defaultState;
     this.initEventListener();
     this.getAccount();
+    this.getLastView();
   }
 
   /**
@@ -108,6 +111,7 @@ class ExtQuickAccess extends React.Component {
   get defaultState() {
     return {
       account: null, // The account
+      lastView: undefined, // Passbob: the last view to restore (null if none), undefined while loading
       // Passphrase
       passphraseRequired: false,
       passphraseRequestId: "",
@@ -213,8 +217,17 @@ class ExtQuickAccess extends React.Component {
    * Is ready
    * @return {boolean}
    */
+  /**
+   * Passbob: get the last quickaccess view to restore, only for a plain opening of the popup.
+   * @returns {Promise<void>}
+   */
+  async getLastView() {
+    const lastView = this.props.bootstrapFeature ? null : await PassbobStorageService.getLastView(this.props.storage);
+    this.setState({ lastView });
+  }
+
   isReady() {
-    return this.state.account !== null;
+    return this.state.account !== null && this.state.lastView !== undefined;
   }
 
   /**
@@ -242,12 +255,19 @@ class ExtQuickAccess extends React.Component {
                 <Router initialEntries={[`/webAccessibleResources/quickaccess.html`]}>
                   <Header />
                   <ManageQuickAccessMode />
+                  {/* Passbob: only a plain opening of the popup is remembered, not a passphrase or creation window. */}
+                  {!this.props.bootstrapFeature && <PassbobRouteTracker />}
                   <Switch>
                     {/* The initial route the quickaccess panel is loaded on is a triage url. */}
                     <Route
                       exact
                       path={"/webAccessibleResources/quickaccess.html"}
-                      render={() => <HandleBootstrapRoute bootstrapFeature={this.props.bootstrapFeature} />}
+                      render={() => (
+                        <HandleBootstrapRoute
+                          bootstrapFeature={this.props.bootstrapFeature}
+                          lastView={this.state.lastView}
+                        />
+                      )}
                     />
                     {/* The route when the user is not authenticated */}
                     <Route
