@@ -1,0 +1,23 @@
+files:
+  - source: /src/locales/en-UK/*.json
+    type: i18next_json
+    translation: /src/locales/%locale%/%original_file_name%
+export_languages:
+  - de
+  - en
+  - es
+  - fr
+  - it
+  - ja
+  - ko
+  - lt
+  - nl
+  - pl
+  - pt-BR
+  - ro
+  - ru
+  - sl
+  - sv
+  - uk
+  - cs
+commit_message: '[skip-ci]'
