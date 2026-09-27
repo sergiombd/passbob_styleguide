@@ -40,6 +40,7 @@ import ClipboardServiceWorkerService from "../../../shared/services/serviceWorke
 import { withActiveSessionLocalStorage } from "../../../shared/context/ActiveSession/ActiveSessionLocalStorageContext";
 import UserActiveSessionEntity from "../../../shared/models/entity/session/userActiveSessionEntity";
 import SecretServiceWorkerService from "../../../shared/services/serviceWorker/secret/secretServiceWorkerService";
+import PassbobStorageService from "../../../shared/services/passbob/passbobStorageService";
 
 const CLIPBOARD_TEMPORARY_CONTENT_FLUSH_DELAY_IN_SECOND = 30;
 
@@ -86,6 +87,7 @@ class ResourceViewPage extends React.Component {
     this.handleCopyPasswordClick = this.handleCopyPasswordClick.bind(this);
     this.handleGoToUrlClick = this.handleGoToUrlClick.bind(this);
     this.handleUseOnThisTabClick = this.handleUseOnThisTabClick.bind(this);
+    this.handleAlwaysCloseAfterFillClick = this.handleAlwaysCloseAfterFillClick.bind(this);
     this.handleViewPasswordButtonClick = this.handleViewPasswordButtonClick.bind(this);
     this.handleCopyTotpClick = this.handleCopyTotpClick.bind(this);
     this.handlePreviewTotpButtonClick = this.handlePreviewTotpButtonClick.bind(this);
@@ -98,6 +100,7 @@ class ResourceViewPage extends React.Component {
       resource: {},
       passphrase: "",
       usingOnThisTab: false,
+      filled: Boolean(this.props.location?.state?.passbobFilled), // Passbob: the resource was just filled on the page
       copyPasswordState: "default",
       copyLoginState: "default",
       copyTotpState: "default",
@@ -472,7 +475,13 @@ class ResourceViewPage extends React.Component {
         this.props.context.openerTabId,
       );
 
-      this.props.context.closeWindow();
+      // Passbob: stay open after filling so the user can still copy a field if the page did not take it.
+      const settings = await PassbobStorageService.getSettings(this.props.context.storage);
+      if (settings.closeAfterAutofill) {
+        this.props.context.closeWindow();
+        return;
+      }
+      this.setState({ usingOnThisTab: false, filled: true });
     } catch (error) {
       if (error && error.name === "UserAbortsOperationError") {
         this.setState({ usingOnThisTab: false });
@@ -484,6 +493,17 @@ class ResourceViewPage extends React.Component {
         });
       }
     }
+  }
+
+  /**
+   * Passbob: the user prefers the popup to close after filling.
+   * @param {Event} event The click event
+   * @returns {Promise<void>}
+   */
+  async handleAlwaysCloseAfterFillClick(event) {
+    event.preventDefault();
+    await PassbobStorageService.updateSettings(this.props.context.storage, { closeAfterAutofill: true });
+    this.props.context.closeWindow();
   }
 
   /**
@@ -581,6 +601,26 @@ class ResourceViewPage extends React.Component {
             </span>
           </a>
         </div>
+        {this.state.filled && (
+          <div className="passbob-filled-banner" role="status">
+            <div className="passbob-filled-banner-text">
+              <strong>
+                <Trans>Filled on this page</Trans>
+              </strong>
+              <span>
+                <Trans>Didn’t work? Copy any field below.</Trans>
+              </span>
+            </div>
+            <a
+              href="#"
+              role="button"
+              className="passbob-filled-banner-action"
+              onClick={this.handleAlwaysCloseAfterFillClick}
+            >
+              <Trans>Always close after filling</Trans>
+            </a>
+          </div>
+        )}
         <ul className="properties">
           {!this.isStandaloneTotpResource && (
             <>
@@ -993,7 +1033,8 @@ class ResourceViewPage extends React.Component {
             onClick={this.handleUseOnThisTabClick}
           >
             {this.state.usingOnThisTab && <SpinnerSVG />}
-            {!this.state.usingOnThisTab && <Trans>Use on this page</Trans>}
+            {!this.state.usingOnThisTab && !this.state.filled && <Trans>Use on this page</Trans>}
+            {!this.state.usingOnThisTab && this.state.filled && <Trans>Fill again</Trans>}
           </a>
           {this.state.error && <div className="error-message">{this.state.error}</div>}
         </div>

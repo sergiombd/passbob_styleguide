@@ -26,6 +26,7 @@ import { TotpCodeGeneratorService } from "../../../shared/services/otp/TotpCodeG
 import { denyRbacContext } from "../../../shared/context/Rbac/RbacContext.test.data";
 import { defaultTotpViewModelDto } from "../../../shared/models/entity/totp/totpDto.test.data";
 import { act } from "react";
+import { waitForTrue } from "../../../../test/utils/waitFor";
 
 beforeEach(() => {
   jest.resetModules();
@@ -285,5 +286,65 @@ describe("ResourceViewPage", () => {
 
       expect(page.listUris.length).toStrictEqual(4);
     });
+  });
+});
+
+describe("ResourceViewPage (Passbob) - autofill keeps the quickaccess open", () => {
+  const useResourceOnCurrentTab = (props) =>
+    props.context.port.addRequestListener("passbolt.quickaccess.use-resource-on-current-tab", async () => {});
+
+  it("stays open after filling and shows the filled banner", async () => {
+    expect.assertions(3);
+    const props = defaultProps();
+    useResourceOnCurrentTab(props);
+    const page = new ResourceViewPagePage(props);
+    await waitForTrue(() => page.isReady);
+
+    expect(page.filledBanner).toBeNull();
+    await page.click(page.useOnThisPageButton);
+
+    await waitForTrue(() => page.filledBanner !== null);
+    expect(page.useOnThisPageButton.textContent).toStrictEqual("Fill again");
+    expect(props.context.closeWindow).not.toHaveBeenCalled();
+  });
+
+  it("closes after filling when the user asked for it", async () => {
+    expect.assertions(2);
+    const props = defaultProps();
+    props.context.storage.local.set({ "passbob.settings": { closeAfterAutofill: true } });
+    useResourceOnCurrentTab(props);
+    const page = new ResourceViewPagePage(props);
+    await waitForTrue(() => page.isReady);
+
+    await page.click(page.useOnThisPageButton);
+
+    await waitForTrue(() => props.context.closeWindow.mock.calls.length > 0);
+    expect(props.context.closeWindow).toHaveBeenCalledTimes(1);
+    expect(page.filledBanner).toBeNull();
+  });
+
+  it("shows the filled banner when opened right after a fill from the home page", async () => {
+    expect.assertions(1);
+    const props = defaultProps();
+    props.initialEntries = { pathname: props.initialEntries, state: { passbobFilled: true } };
+    const page = new ResourceViewPagePage(props);
+    await waitForTrue(() => page.filledBanner !== null);
+    expect(page.filledBanner.textContent).toContain("Filled on this page");
+  });
+
+  it("remembers the choice to always close after filling", async () => {
+    expect.assertions(2);
+    const props = defaultProps();
+    useResourceOnCurrentTab(props);
+    const page = new ResourceViewPagePage(props);
+    await waitForTrue(() => page.isReady);
+    await page.click(page.useOnThisPageButton);
+    await waitForTrue(() => page.filledBanner !== null);
+
+    await page.click(page.alwaysCloseAfterFillLink);
+
+    await waitForTrue(() => props.context.closeWindow.mock.calls.length > 0);
+    expect(props.context.closeWindow).toHaveBeenCalledTimes(1);
+    expect(props.context.storage.local.get(["passbob.settings"])["passbob.settings"].closeAfterAutofill).toBe(true);
   });
 });
