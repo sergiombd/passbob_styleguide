@@ -292,14 +292,15 @@ describe("HomePage", () => {
   });
 
   describe("As LU I can use resource to auto-fill the current page", () => {
-    it("I can click on a suggested resource to use it on the current tab then the quickaccess closes", async () => {
-      expect.assertions(3);
+    it("I can click on a suggested resource to use it on the current tab then the quickaccess stays open on it", async () => {
+      expect.assertions(5);
 
       const expectedOpenerTabId = 1;
       const suggestedResource = defaultResourceDto({ metadata: { name: "apache", uris: ["http://www.apache.org"] } });
 
       const props = defaultProps({ resources: [suggestedResource] });
       props.context.openerTabId = expectedOpenerTabId;
+      props.history = createMemoryHistory();
       props.context.port.addRequestListener(
         "passbolt.active-tab.get-url",
         async () => suggestedResource.metadata.uris[0],
@@ -311,6 +312,33 @@ describe("HomePage", () => {
           expect(openerTabId).toStrictEqual(expectedOpenerTabId);
         },
       );
+
+      const page = new HomePagePage(props);
+
+      await waitForTrue(() => page.suggestedResourcesEntries?.length > 0);
+
+      await page.clickOnSuggestedResource(0);
+      await waitForTrue(() => props.history.location.pathname.includes(suggestedResource.id));
+      expect(props.history.location.pathname).toStrictEqual(
+        `/webAccessibleResources/quickaccess/resources/view/${suggestedResource.id}`,
+      );
+      expect(props.history.location.state).toStrictEqual({ passbobFilled: true });
+      expect(props.context.closeWindow).not.toHaveBeenCalled();
+    });
+
+    it("I can click on a suggested resource to use it on the current tab then the quickaccess closes if I asked for it", async () => {
+      expect.assertions(1);
+
+      const suggestedResource = defaultResourceDto({ metadata: { name: "apache", uris: ["http://www.apache.org"] } });
+
+      const props = defaultProps({ resources: [suggestedResource] });
+      props.context.openerTabId = 1;
+      props.context.storage.local.set({ "passbob.settings": { closeAfterAutofill: true } });
+      props.context.port.addRequestListener(
+        "passbolt.active-tab.get-url",
+        async () => suggestedResource.metadata.uris[0],
+      );
+      props.context.port.addRequestListener("passbolt.quickaccess.use-resource-on-current-tab", async () => {});
 
       const page = new HomePagePage(props);
 

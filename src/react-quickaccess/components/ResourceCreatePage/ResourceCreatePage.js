@@ -45,6 +45,12 @@ import CloseSVG from "../../../img/svg/close.svg";
 import DiceSVG from "../../../img/svg/dice.svg";
 import SettingsSVG from "../../../img/svg/settings.svg";
 
+/**
+ * Passbob: the route the draft of this form is saved for, and how long to wait after a change before saving it.
+ */
+export const CREATE_ROUTE = "/webAccessibleResources/quickaccess/resources/create";
+const DRAFT_SAVE_DELAY_IN_MS = 250;
+
 class ResourceCreatePage extends React.Component {
   /**
    * @constructor
@@ -74,6 +80,7 @@ class ResourceCreatePage extends React.Component {
       passwordEntropy: null,
       generatorSettings: null,
       processing: false,
+      draftRestored: false, // Passbob: the form was filled from an unsaved draft
     };
   }
 
@@ -89,6 +96,7 @@ class ResourceCreatePage extends React.Component {
     this.handleOpenGenerator = this.handleOpenGenerator.bind(this);
     this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
     this.save = this.save.bind(this);
+    this.handleDiscardDraftClick = this.handleDiscardDraftClick.bind(this);
   }
 
   /**
@@ -102,8 +110,100 @@ class ResourceCreatePage extends React.Component {
     await this.initResourceViewModel();
   }
 
-  async initResourceViewModel() {
-    const resourceViewModelDto = await this.getPreparedResource();
+  /**
+   * Passbob: save a draft of the form after each change made by the user.
+   * @param {object} prevProps The previous props
+   * @param {object} prevState The previous state
+   */
+  componentDidUpdate(prevProps, prevState) {
+    if (this.hasUserEdited && prevState.resourceViewModel !== this.state.resourceViewModel) {
+      clearTimeout(this.draftSaveTimeout);
+      this.draftSaveTimeout = setTimeout(() => this.saveDraft(), DRAFT_SAVE_DELAY_IN_MS);
+      this.isDraftSavePending = true;
+    }
+  }
+
+  componentWillUnmount() {
+    clearTimeout(this.draftSaveTimeout);
+    // Do not lose the last keystrokes when the page is left right after typing (password generator...).
+    if (this.isDraftSavePending) {
+      this.saveDraft();
+    }
+  }
+
+  /**
+   * Passbob: save the draft of the form, the password is encrypted by the background page for the user's own key.
+   * @returns {Promise<void>}
+   */
+  async saveDraft() {
+    this.isDraftSavePending = false;
+    const { name, uri, username, password } = this.state.resourceViewModel;
+    try {
+      await this.props.context.port.request("passbob.draft.save", {
+        pathname: CREATE_ROUTE,
+        fields: { name: name || "", uri: uri || "", username: username || "" },
+        secrets: { password: password || "" },
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  /**
+   * Passbob: get the unsaved draft of the form, if any. Never for a creation requested by a web page (in-form menu).
+   * @returns {Promise<{name: string, uri: string, username: string, password: string}|null>}
+   */
+  async getDraft() {
+    if (this.props.context.bootstrapFeature) {
+      return null;
+    }
+    try {
+      const draft = await this.props.context.port.request("passbob.draft.get", CREATE_ROUTE);
+      if (!draft) {
+        return null;
+      }
+      return {
+        name: draft.fields.name || "",
+        uri: draft.fields.uri || "",
+        username: draft.fields.username || "",
+        password: draft.secrets.password || "",
+      };
+    } catch (error) {
+      // The user may cancel the passphrase request: fall back to an empty form.
+      console.error(error);
+      return null;
+    }
+  }
+
+  /**
+   * Passbob: forget the draft of the form.
+   * @returns {Promise<void>}
+   */
+  async clearDraft() {
+    clearTimeout(this.draftSaveTimeout);
+    this.isDraftSavePending = false;
+    this.hasUserEdited = false;
+    try {
+      await this.props.context.port.request("passbob.draft.clear");
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  /**
+   * Passbob: discard the restored draft and start again from the current tab.
+   * @param {Event} event The click event
+   * @returns {Promise<void>}
+   */
+  async handleDiscardDraftClick(event) {
+    event.preventDefault();
+    await this.clearDraft();
+    this.setState({ draftRestored: false });
+    await this.initResourceViewModel({ skipDraft: true });
+  }
+
+  async initResourceViewModel({ skipDraft = false } = {}) {
+    const resourceViewModelDto = await this.getPreparedResource({ skipDraft });
     let resourceType;
 
     if (this.props.metadataTypeSettings.isDefaultResourceTypeV5) {
@@ -185,12 +285,18 @@ class ResourceCreatePage extends React.Component {
    * If no resources were preparen the form is initialised with the tab info.
    * @returns {Promise<object>}
    */
-  async getPreparedResource() {
+  async getPreparedResource({ skipDraft = false } = {}) {
     const preparedResource = this.props.prepareResourceContext.consumePreparedResource();
     const lastGeneratedPassword = this.props.prepareResourceContext.lastGeneratedPassword;
     if (preparedResource) {
       preparedResource.password = lastGeneratedPassword ?? preparedResource.password;
       return preparedResource;
+    }
+
+    const draft = skipDraft ? null : await this.getDraft();
+    if (draft) {
+      this.setState({ draftRestored: true });
+      return draft;
     }
 
     return await this.getPasswordMetaFromTabInfo();
@@ -265,6 +371,7 @@ class ResourceCreatePage extends React.Component {
    */
   handleGoBackClick(ev) {
     ev.preventDefault();
+    this.clearDraft();
     this.props.prepareResourceContext.resetSecretGeneratorSettings();
     this.props.history.goBack();
   }
@@ -273,6 +380,7 @@ class ResourceCreatePage extends React.Component {
    * Handles the click on the "x" button
    */
   handleCancelButtonClick() {
+    this.clearDraft();
     this.props.prepareResourceContext.resetSecretGeneratorSettings();
   }
 
@@ -369,6 +477,7 @@ class ResourceCreatePage extends React.Component {
       this.handleSubmitError(error);
       return;
     }
+    await this.clearDraft();
 
     /*
      * Remove the create step from the history.
@@ -462,6 +571,7 @@ class ResourceCreatePage extends React.Component {
    * @param {React.Event} event
    */
   handleInputChange(event) {
+    this.hasUserEdited = true;
     const { name, value } = event.target;
     const newState = {
       resourceViewModel: this.state.resourceViewModel.cloneWithMutation(name, value),
@@ -486,6 +596,7 @@ class ResourceCreatePage extends React.Component {
     if (this.state.processing) {
       return;
     }
+    this.hasUserEdited = true;
     const password = this.generateSecret();
     const resourceViewModel = this.state.resourceViewModel.cloneWithMutation("password", password);
     const passwordEntropy = SecretGenerator.entropy(password);
@@ -576,6 +687,16 @@ class ResourceCreatePage extends React.Component {
             </span>
           </Link>
         </div>
+        {this.state.draftRestored && (
+          <div className="passbob-draft-banner" role="status">
+            <span>
+              <Trans>Unsaved changes restored</Trans>
+            </span>
+            <a href="#" role="button" className="passbob-draft-banner-action" onClick={this.handleDiscardDraftClick}>
+              <Trans>Discard</Trans>
+            </a>
+          </div>
+        )}
         <form onSubmit={this.handleFormSubmit}>
           <div className="resource-create-form">
             <div className="form-container">

@@ -21,6 +21,7 @@ import { withRbac } from "../../../shared/context/Rbac/RbacContext";
 import { uiActions } from "../../../shared/services/rbacs/uiActionEnumeration";
 import { withAppContext } from "../../../shared/context/AppContext/AppContext";
 import { filterResourcesBySearch } from "../../../shared/utils/filterUtils";
+import PassbobStorageService from "../../../shared/services/passbob/passbobStorageService";
 import { withResourcesLocalStorage } from "../../contexts/ResourceLocalStorageContext";
 import memoize from "memoize-one";
 import { withResourceTypesLocalStorage } from "../../../shared/context/ResourceTypesLocalStorageContext/ResourceTypesLocalStorageContext";
@@ -90,9 +91,9 @@ class HomePage extends React.Component {
       HomePage.isInitialised = true;
     }
 
-    // Reset the search and any search history.
+    // Reset the search and any search history, or restore the search of the last view (Passbob).
     this.props.context.searchHistory = [];
-    this.props.context.updateSearch("");
+    this.props.context.updateSearch(this.props.location?.state?.passbobRestoredSearch || "");
 
     this.loadActiveTabUrl();
   }
@@ -171,7 +172,15 @@ class HomePage extends React.Component {
         resource.id,
         this.props.context.openerTabId,
       );
-      await this.props.context.closeWindow();
+      // Passbob: stay open on the filled resource so the user can still copy a field if the page did not take it.
+      const settings = await PassbobStorageService.getSettings(this.props.context.storage);
+      if (settings.closeAfterAutofill) {
+        await this.props.context.closeWindow();
+        return;
+      }
+      this.props.history.push(`/webAccessibleResources/quickaccess/resources/view/${resource.id}`, {
+        passbobFilled: true,
+      });
     } catch (error) {
       if (error && error.name === "UserAbortsOperationError") {
         this.setState({ usingOnThisTab: false });

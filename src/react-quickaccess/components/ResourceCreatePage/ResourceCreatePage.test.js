@@ -122,7 +122,7 @@ describe("ResourceCreatePage", () => {
           uris: ["https://passbolt-browser-extension/test"],
           username: "test@passbolt.com",
         },
-        expired: fakeNow.plus({ days: 30 }).plus({ milliseconds: 100 }).toJSDate().toISOString(),
+        expired: fakeNow.plus({ days: 30 }).plus({ milliseconds: 150 }).toJSDate().toISOString(), // Passbob: +50ms, one more polling round for the draft lookup
       };
 
       const expectedSecretDto = {
@@ -180,7 +180,7 @@ describe("ResourceCreatePage", () => {
           uris: ["https://passbolt-browser-extension/test"],
           username: "test@passbolt.com",
         },
-        expired: fakeNow.plus({ days: 30 }).plus({ milliseconds: 100 }).toJSDate().toISOString(),
+        expired: fakeNow.plus({ days: 30 }).plus({ milliseconds: 150 }).toJSDate().toISOString(), // Passbob: +50ms, one more polling round for the draft lookup
       };
 
       const expectedSecretDto = {
@@ -318,7 +318,7 @@ describe("ResourceCreatePage", () => {
           uris: ["https://passbolt-browser-extension/test"],
           username: "test@passbolt.com",
         },
-        expired: fakeNow.plus({ days: 30 }).plus({ milliseconds: 100 }).toJSDate().toISOString(),
+        expired: fakeNow.plus({ days: 30 }).plus({ milliseconds: 150 }).toJSDate().toISOString(), // Passbob: +50ms, one more polling round for the draft lookup
       };
 
       const expectedSecretDto = {
@@ -566,5 +566,101 @@ describe("ResourceCreatePage", () => {
 
       expect(props.history.location.pathname).toStrictEqual("/home");
     });
+  });
+});
+
+describe("ResourceCreatePage (Passbob) - drafts", () => {
+  const CREATE_ROUTE = "/webAccessibleResources/quickaccess/resources/create";
+  const tabInfo = { name: "From the tab", uris: ["https://tab.example.com"] };
+  const storedDraft = {
+    pathname: CREATE_ROUTE,
+    fields: { name: "GitLab · vor", uri: "https://vor.hexaglobe.net", username: "smoubayed" },
+    secrets: { password: "draft-password-123" },
+  };
+
+  const propsWithDraft = (draft, props = {}) => {
+    const p = defaultProps(props);
+    p.context.port.addRequestListener("passbolt.quickaccess.prepare-resource", () => tabInfo);
+    p.context.port.addRequestListener("passbob.draft.get", () => draft);
+    p.draftSaved = [];
+    p.draftCleared = 0;
+    p.context.port.addRequestListener("passbob.draft.save", (d) => p.draftSaved.push(d));
+    p.context.port.addRequestListener("passbob.draft.clear", () => p.draftCleared++);
+    return p;
+  };
+
+  const draftBanner = () => document.querySelector(".passbob-draft-banner");
+
+  it("restores an unsaved draft, password included, and says so", async () => {
+    expect.assertions(4);
+    const props = propsWithDraft(storedDraft);
+    const page = new ResourceCreatePagePage(props);
+
+    await screen.findByDisplayValue(storedDraft.fields.name);
+    expect(page.uri.value).toStrictEqual(storedDraft.fields.uri);
+    expect(page.username.value).toStrictEqual(storedDraft.fields.username);
+    expect(page.password.value).toStrictEqual(storedDraft.secrets.password);
+    expect(draftBanner()).not.toBeNull();
+  });
+
+  it("fills the form from the tab when there is no draft", async () => {
+    expect.assertions(1);
+    const props = propsWithDraft(null);
+    new ResourceCreatePagePage(props);
+
+    await screen.findByDisplayValue(tabInfo.name);
+    expect(draftBanner()).toBeNull();
+  });
+
+  it("never restores a draft for a creation requested by a web page", async () => {
+    expect.assertions(1);
+    const props = propsWithDraft(storedDraft);
+    props.context.bootstrapFeature = "create-new-credentials";
+    new ResourceCreatePagePage(props);
+
+    await screen.findByDisplayValue(tabInfo.name);
+    expect(draftBanner()).toBeNull();
+  });
+
+  it("saves a draft after the user types, not after the automatic prefill", async () => {
+    expect.assertions(3);
+    const props = propsWithDraft(null);
+    const page = new ResourceCreatePagePage(props);
+    await screen.findByDisplayValue(tabInfo.name);
+
+    await act(async () => jest.advanceTimersByTime(1000));
+    expect(props.draftSaved).toHaveLength(0);
+
+    await page.setFormWith({ username: "smoubayed", password: "typed-password" });
+    await act(async () => jest.advanceTimersByTime(300));
+
+    const lastDraft = props.draftSaved[props.draftSaved.length - 1];
+    expect(lastDraft.fields).toStrictEqual({ name: tabInfo.name, uri: tabInfo.uris[0], username: "smoubayed" });
+    expect(lastDraft.secrets).toStrictEqual({ password: "typed-password" });
+  });
+
+  it("discards the draft and starts again from the tab", async () => {
+    expect.assertions(3);
+    const props = propsWithDraft(storedDraft);
+    const page = new ResourceCreatePagePage(props);
+    await screen.findByDisplayValue(storedDraft.fields.name);
+
+    await page.user.click(document.querySelector(".passbob-draft-banner-action"));
+
+    await screen.findByDisplayValue(tabInfo.name);
+    expect(props.draftCleared).toBeGreaterThan(0);
+    expect(draftBanner()).toBeNull();
+    expect(page.password.value).not.toStrictEqual(storedDraft.secrets.password);
+  });
+
+  it("forgets the draft when going back", async () => {
+    expect.assertions(1);
+    const props = propsWithDraft(storedDraft);
+    const page = new ResourceCreatePagePage(props);
+    await screen.findByDisplayValue(storedDraft.fields.name);
+
+    await page.clickOnBackButton();
+
+    expect(props.draftCleared).toBeGreaterThan(0);
   });
 });

@@ -154,3 +154,66 @@ describe("HandleBootstrapRoute", () => {
     });
   });
 });
+
+describe("HandleBootstrapRoute (Passbob) - reopen on the last view", () => {
+  const RESOURCE_VIEW = "/webAccessibleResources/quickaccess/resources/view/8e3874ae-4b40-590b-968a-418f704b9d9a";
+  const HOME = "/webAccessibleResources/quickaccess/home";
+
+  const propsWithLastView = (lastView, props = {}) =>
+    defaultProps({
+      bootstrapFeature: null,
+      lastView,
+      history: { push: jest.fn(), replace: jest.fn() },
+      ...props,
+    });
+
+  it("reopens on the last resource with home underneath, so going back lands on home", () => {
+    expect.assertions(2);
+    const props = propsWithLastView({ pathname: RESOURCE_VIEW, search: "" });
+    new HandleBootstrapRoutePage(props);
+
+    expect(props.history.replace).toHaveBeenCalledWith(HOME, { passbobRestoredSearch: "" });
+    expect(props.history.push).toHaveBeenCalledWith(RESOURCE_VIEW);
+  });
+
+  it("reopens on home with the last search", () => {
+    expect.assertions(2);
+    const props = propsWithLastView({ pathname: HOME, search: "gitlab" });
+    new HandleBootstrapRoutePage(props);
+
+    expect(props.history.replace).toHaveBeenCalledWith(HOME, { passbobRestoredSearch: "gitlab" });
+    expect(props.history.push).not.toHaveBeenCalled();
+  });
+
+  it("ignores the last view when a bootstrap feature is requested", () => {
+    expect.assertions(2);
+    const props = propsWithLastView(
+      { pathname: RESOURCE_VIEW, search: "" },
+      { bootstrapFeature: BOOTSTRAP_FEATURE.AUTOSAVE_CREDENTIALS },
+    );
+    new HandleBootstrapRoutePage(props);
+
+    expect(props.history.replace).not.toHaveBeenCalled();
+    expect(props.history.push).toHaveBeenCalledWith("/webAccessibleResources/quickaccess/resources/autosave");
+  });
+
+  it("ignores the last view when the user is not authenticated", () => {
+    expect.assertions(2);
+    const props = propsWithLastView(
+      { pathname: RESOURCE_VIEW, search: "" },
+      { activeSession: new UserActiveSessionEntity(defaultUserActiveSessionDto({ is_authenticated: false })) },
+    );
+    new HandleBootstrapRoutePage(props);
+
+    expect(props.history.replace).not.toHaveBeenCalled();
+    expect(props.history.push).toHaveBeenCalledWith("/webAccessibleResources/quickaccess/login");
+  });
+
+  it("goes home when there is no last view", () => {
+    expect.assertions(1);
+    const props = propsWithLastView(null);
+    new HandleBootstrapRoutePage(props);
+
+    expect(props.history.push).toHaveBeenCalledWith(HOME);
+  });
+});

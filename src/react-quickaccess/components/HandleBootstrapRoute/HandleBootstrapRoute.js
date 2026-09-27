@@ -72,8 +72,36 @@ class HandleBootstrapRoute extends React.Component {
    * Renders the component
    * @returns {JSX.Element}
    */
+  /**
+   * Passbob: get the last view to restore, if any. Only for a plain opening of an online authenticated
+   * quickaccess, a bootstrap feature (create credentials, passphrase request...) always wins.
+   * @returns {{pathname: string, search: string}|null}
+   */
+  getLastViewToRestore() {
+    const activeSession = this.props.activeSession;
+    const isOnlineAuthenticated =
+      activeSession.isAuthenticated && !activeSession.isSessionOffline && activeSession.isServerReachable;
+    if (!isOnlineAuthenticated || this.props.bootstrapFeature || !this.props.lastView) {
+      return null;
+    }
+    return this.props.lastView;
+  }
+
   render() {
-    return this.props.history.push(this.getBootstrapRoute());
+    const lastView = this.getLastViewToRestore();
+    if (!lastView) {
+      return this.props.history.push(this.getBootstrapRoute());
+    }
+    /*
+     * Rebuild the history as "home, then the restored page" so the pages' goBack() lands on the home page and never
+     * on this bootstrap route, which would restore the same page again.
+     */
+    const homeRoute = "/webAccessibleResources/quickaccess/home";
+    this.props.history.replace(homeRoute, { passbobRestoredSearch: lastView.search });
+    if (lastView.pathname !== homeRoute) {
+      this.props.history.push(lastView.pathname);
+    }
+    return null;
   }
 }
 
@@ -82,6 +110,7 @@ HandleBootstrapRoute.propTypes = {
   activeSession: PropTypes.instanceOf(UserActiveSessionEntity), // The user active session
   history: PropTypes.object, // The history
   bootstrapFeature: PropTypes.string, // The bootstrap feature
+  lastView: PropTypes.shape({ pathname: PropTypes.string, search: PropTypes.string }), // Passbob: the last view to restore
 };
 
 export default withRouter(withAppContext(withActiveSessionLocalStorage(HandleBootstrapRoute)));
