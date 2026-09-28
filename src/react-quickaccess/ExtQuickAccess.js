@@ -11,6 +11,7 @@ import LoginPage from "./components/LoginPage/LoginPage";
 import MoreFiltersPage from "./components/MoreFiltersPage/MoreFiltersPage";
 import ResourceCreatePage from "./components/ResourceCreatePage/ResourceCreatePage";
 import ResourceViewPage from "./components/ResourceViewPage/ResourceViewPage";
+import ResourceEditPage from "./components/ResourceEditPage/ResourceEditPage";
 import Search from "./components/Search/Search";
 import { MemoryRouter as Router, Route, Switch } from "react-router-dom";
 import AnimatedSwitch from "./components/AnimatedSwitch/AnimatedSwitch";
@@ -380,6 +381,10 @@ class ExtQuickAccess extends React.Component {
                                         <PrivateRoute
                                           path="/webAccessibleResources/quickaccess/resources/view/:id"
                                           component={ResourceViewPage}
+                                        />
+                                        <PrivateRoute
+                                          path="/webAccessibleResources/quickaccess/resources/edit/:id"
+                                          component={ResourceEditPage}
                                         />
                                         <PrivateRoute
                                           exact
