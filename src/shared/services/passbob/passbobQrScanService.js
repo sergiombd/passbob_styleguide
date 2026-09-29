@@ -11,6 +11,13 @@ import { ZXingHtml5QrcodeDecoder } from "html5-qrcode/esm/zxing-html5-qrcode-dec
 import TotpEntity from "../../models/entity/totp/totpEntity";
 
 export const CAPTURE_TAB_EVENT = "passbob.tab.capture-visible";
+export const CAPTURE_TIMEOUT_IN_MS = 15000;
+
+/**
+ * The decoder misses a small QR code in a full screenshot full of text. The screenshot is then searched in
+ * overlapping tiles of a half, a third and a quarter of its size, the QR code takes more room in a smaller tile.
+ */
+const TILE_DIVISIONS = [2, 3, 4];
 
 /**
  * Why a scan did not give a TOTP.
@@ -52,17 +59,21 @@ class PassbobQrScanService {
   static async scanPage(port, tabId) {
     let dataUrl;
     try {
-      dataUrl = await port.request(CAPTURE_TAB_EVENT, tabId ?? null);
+      console.debug("[passbob] QR scan: screenshot requested, tab", tabId ?? "current");
+      dataUrl = await PassbobQrScanService.withTimeout(port.request(CAPTURE_TAB_EVENT, tabId ?? null));
+      console.debug(`[passbob] QR scan: screenshot received, ${Math.round((dataUrl?.length || 0) / 1024)} KB`);
     } catch (error) {
+      console.warn("[passbob] QR scan: no screenshot", error);
       throw new PassbobQrScanError(QR_SCAN_ERRORS.PAGE_UNREADABLE, error);
     }
 
     let decodedText;
     try {
       const canvas = await PassbobQrScanService.drawImage(dataUrl);
-      const result = await PassbobQrScanService.createDecoder().decodeAsync(canvas);
-      decodedText = result.text;
+      console.debug(`[passbob] QR scan: decoding ${canvas.width}x${canvas.height}`);
+      decodedText = await PassbobQrScanService.decodeInRegions(canvas);
     } catch (error) {
+      console.warn("[passbob] QR scan: no QR code", error);
       throw new PassbobQrScanError(QR_SCAN_ERRORS.NO_QR_CODE, error);
     }
 
@@ -88,6 +99,84 @@ class PassbobQrScanService {
   }
 
   /**
+   * Reject when the background page does not answer, the button would spin forever otherwise.
+   * @param {Promise} promise The request
+   * @returns {Promise}
+   */
+  static withTimeout(promise) {
+    let timeout;
+    const timer = new Promise((_resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error("The screenshot request timed out.")), CAPTURE_TIMEOUT_IN_MS);
+    });
+    return Promise.race([promise, timer]).finally(() => clearTimeout(timeout));
+  }
+
+  /**
+   * Decode the first QR code found, in the whole screenshot first, then tile by tile.
+   * @param {HTMLCanvasElement} canvas The screenshot
+   * @returns {Promise<string>} The content of the QR code
+   * @throws {Error} If no QR code is found
+   */
+  static async decodeInRegions(canvas) {
+    const decoder = PassbobQrScanService.createDecoder();
+    let lastError;
+    for (const region of PassbobQrScanService.getRegions(canvas.width, canvas.height)) {
+      const isWhole = region.width === canvas.width && region.height === canvas.height;
+      try {
+        const source = isWhole ? canvas : PassbobQrScanService.cropCanvas(canvas, region);
+        const result = await decoder.decodeAsync(source);
+        return result.text;
+      } catch (error) {
+        lastError = error;
+      }
+      // Each decode blocks for a while, let the popup breathe between two tiles.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    throw lastError || new Error("No QR code found.");
+  }
+
+  /**
+   * The regions to search: the whole image, then the overlapping tiles, each overlapping its neighbours by half.
+   * @param {number} width The image width
+   * @param {number} height The image height
+   * @returns {Array<{x: number, y: number, width: number, height: number}>}
+   */
+  static getRegions(width, height) {
+    const regions = [{ x: 0, y: 0, width, height }];
+    for (const division of TILE_DIVISIONS) {
+      const tileWidth = Math.ceil(width / division);
+      const tileHeight = Math.ceil(height / division);
+      for (let y = 0; y < height - tileHeight / 2; y += tileHeight / 2) {
+        for (let x = 0; x < width - tileWidth / 2; x += tileWidth / 2) {
+          const left = Math.round(x);
+          const top = Math.round(y);
+          regions.push({
+            x: left,
+            y: top,
+            width: Math.min(tileWidth, width - left),
+            height: Math.min(tileHeight, height - top),
+          });
+        }
+      }
+    }
+    return regions;
+  }
+
+  /**
+   * Copy a region of the screenshot on its own canvas.
+   * @param {HTMLCanvasElement} canvas The screenshot
+   * @param {{x: number, y: number, width: number, height: number}} region The region
+   * @returns {HTMLCanvasElement}
+   */
+  static cropCanvas(canvas, { x, y, width, height }) {
+    const tile = document.createElement("canvas");
+    tile.width = width;
+    tile.height = height;
+    tile.getContext("2d").drawImage(canvas, x, y, width, height, 0, 0, width, height);
+    return tile;
+  }
+
+  /**
    * The QR code decoder of html5-qrcode (ZXing).
    * @returns {ZXingHtml5QrcodeDecoder}
    */
@@ -98,7 +187,7 @@ class PassbobQrScanService {
 
   /**
    * Draw the screenshot on a canvas, at full size.
-   * @param {string} dataUrl The PNG data URL
+   * @param {string} dataUrl The screenshot data URL
    * @returns {Promise<HTMLCanvasElement>}
    */
   static drawImage(dataUrl) {

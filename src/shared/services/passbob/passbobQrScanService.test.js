@@ -7,7 +7,7 @@
  * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
  */
 import QRCode from "qrcode";
-import PassbobQrScanService, { CAPTURE_TAB_EVENT, QR_SCAN_ERRORS } from "./passbobQrScanService";
+import PassbobQrScanService, { CAPTURE_TAB_EVENT, CAPTURE_TIMEOUT_IN_MS, QR_SCAN_ERRORS } from "./passbobQrScanService";
 
 const SCREENSHOT = "data:image/png;base64,iVBORw0KGgo=";
 const TOTP_URI = "otpauth://totp/AWS:smoubayed?secret=JBSWY3DPEHPK3PXP&issuer=AWS&digits=8&period=60&algorithm=SHA256";
@@ -75,17 +75,51 @@ describe("PassbobQrScanService", () => {
       });
     });
 
+    it("fails when the background page never answers", async () => {
+      jest.useFakeTimers();
+      const port = mockPort(() => new Promise(() => {}));
+
+      const scan = PassbobQrScanService.scanPage(port, null);
+      const assertion = expect(scan).rejects.toMatchObject({ reason: QR_SCAN_ERRORS.PAGE_UNREADABLE });
+      await jest.advanceTimersByTimeAsync(CAPTURE_TIMEOUT_IN_MS);
+      await assertion;
+      jest.useRealTimers();
+    });
+
     it("fails when there is no QR code on the page", async () => {
-      const blank = new Uint8ClampedArray(200 * 200 * 4).fill(255);
-      jest.spyOn(PassbobQrScanService, "drawImage").mockImplementation(async () => ({
-        width: 200,
-        height: 200,
-        getContext: () => ({ getImageData: () => ({ data: blank }) }),
-      }));
+      const blankCanvas = (width, height) => {
+        const data = new Uint8ClampedArray(width * height * 4).fill(255);
+        return { width, height, getContext: () => ({ getImageData: () => ({ data }) }) };
+      };
+      jest.spyOn(PassbobQrScanService, "drawImage").mockImplementation(async () => blankCanvas(200, 200));
+      const crop = jest
+        .spyOn(PassbobQrScanService, "cropCanvas")
+        .mockImplementation((canvas, region) => blankCanvas(region.width, region.height));
 
       await expect(PassbobQrScanService.scanPage(mockPort(), null)).rejects.toMatchObject({
         reason: QR_SCAN_ERRORS.NO_QR_CODE,
       });
+      expect(crop).toHaveBeenCalledTimes(PassbobQrScanService.getRegions(200, 200).length - 1);
+    });
+
+    it("searches the tiles when the whole screenshot gives nothing", async () => {
+      const screenshot = { width: 3840, height: 2160 };
+      const tile = { width: 1920, height: 1080 };
+      jest.spyOn(PassbobQrScanService, "drawImage").mockImplementation(async () => screenshot);
+      const crop = jest.spyOn(PassbobQrScanService, "cropCanvas").mockImplementation(() => tile);
+      const decodeAsync = jest.fn(async (canvas) => {
+        if (canvas === screenshot) {
+          throw new Error("NotFoundException");
+        }
+        return { text: TOTP_URI };
+      });
+      jest.spyOn(PassbobQrScanService, "createDecoder").mockImplementation(() => ({ decodeAsync }));
+
+      const totp = await PassbobQrScanService.scanPage(mockPort(), null);
+
+      expect(totp.secret_key).toStrictEqual("JBSWY3DPEHPK3PXP");
+      expect(decodeAsync).toHaveBeenCalledTimes(2);
+      expect(crop).toHaveBeenCalledWith(screenshot, { x: 0, y: 0, width: 1920, height: 1080 });
     });
 
     it("fails when the screenshot cannot be loaded", async () => {
@@ -128,6 +162,20 @@ describe("PassbobQrScanService", () => {
       expect(() => PassbobQrScanService.parseOtpAuthUri(text)).toThrow(
         expect.objectContaining({ reason: QR_SCAN_ERRORS.NOT_TOTP }),
       );
+    });
+  });
+
+  describe("::getRegions", () => {
+    it("starts with the whole image, then overlapping tiles inside the image", () => {
+      const regions = PassbobQrScanService.getRegions(3840, 2160);
+
+      expect(regions[0]).toStrictEqual({ x: 0, y: 0, width: 3840, height: 2160 });
+      // Halves overlapping by a quarter: 3 x 3, thirds: 5 x 5, quarters: 7 x 7.
+      expect(regions).toHaveLength(1 + 9 + 25 + 49);
+      for (const { x, y, width, height } of regions) {
+        expect(x + width).toBeLessThanOrEqual(3840);
+        expect(y + height).toBeLessThanOrEqual(2160);
+      }
     });
   });
 });
