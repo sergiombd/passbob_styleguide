@@ -32,6 +32,9 @@ import PasswordComplexity from "../../../shared/components/PasswordComplexity/Pa
 import SpinnerSVG from "../../../img/svg/spinner.svg";
 import CaretLeftSVG from "../../../img/svg/caret_left.svg";
 import DiceSVG from "../../../img/svg/dice.svg";
+import QrCodeSVG from "../../../img/svg/qr_code.svg";
+import PassbobQrScanService, { QR_SCAN_ERRORS } from "../../../shared/services/passbob/passbobQrScanService";
+import { TotpCodeGeneratorService } from "../../../shared/services/otp/TotpCodeGeneratorService";
 
 /**
  * The permission type required to edit a resource (update).
@@ -62,6 +65,8 @@ class ResourceEditPage extends React.Component {
       passwordEntropy: null,
       passwordWarning: null, // "weak" or "pwned" when the new password needs a confirmation
       unexpectedErrorMessage: "",
+      isScanning: false,
+      scanResult: null, // {code} once a QR code was read from the page, {error} when it failed
     };
   }
 
@@ -70,6 +75,7 @@ class ResourceEditPage extends React.Component {
     this.handleInputChange = this.handleInputChange.bind(this);
     this.handleGeneratePasswordButtonClick = this.handleGeneratePasswordButtonClick.bind(this);
     this.handleFormSubmit = this.handleFormSubmit.bind(this);
+    this.handleScanQrCodeClick = this.handleScanQrCodeClick.bind(this);
   }
 
   async componentDidMount() {
@@ -196,6 +202,9 @@ class ResourceEditPage extends React.Component {
    */
   handleInputChange(event) {
     const { name, value } = event.target;
+    if (name === "secret.totp.secret_key") {
+      this.setState({ scanResult: null });
+    }
     this.setField(name, value);
   }
 
@@ -218,6 +227,44 @@ class ResourceEditPage extends React.Component {
     }
     if (this.state.errors) {
       newState.errors = this.createSanitizedResourceFormEntity(newState.resource).validate();
+    }
+    this.setState(newState);
+  }
+
+  /**
+   * Read the TOTP from a QR code shown on the page the quickaccess is used on.
+   * @returns {Promise<void>}
+   */
+  async handleScanQrCodeClick() {
+    if (this.state.processing || this.state.isScanning) {
+      return;
+    }
+    this.setState({ isScanning: true, scanResult: null });
+    try {
+      const totp = await PassbobQrScanService.scanPage(this.props.context.port, this.props.context.openerTabId);
+      this.setTotp(totp);
+      this.setState({ isScanning: false, scanResult: { code: TotpCodeGeneratorService.generate(totp) } });
+    } catch (error) {
+      console.warn(error);
+      this.setState({ isScanning: false, scanResult: { error: error?.reason || QR_SCAN_ERRORS.NO_QR_CODE } });
+    }
+  }
+
+  /**
+   * Set all the TOTP settings read from a QR code.
+   * @param {{secret_key: string, algorithm: string, digits: number, period: number}} totp
+   */
+  setTotp(totp) {
+    if (!this.hasTotp) {
+      this.resourceFormEntity.addSecret(ResourceEditCreateFormEnumerationTypes.TOTP, { validate: false });
+    }
+    for (const prop of ["secret_key", "algorithm", "digits", "period"]) {
+      this.resourceFormEntity.set(`secret.totp.${prop}`, totp[prop], { validate: false });
+    }
+    const resource = this.resourceFormEntity.toDto();
+    const newState = { resource };
+    if (this.state.errors) {
+      newState.errors = this.createSanitizedResourceFormEntity(resource).validate();
     }
     this.setState(newState);
   }
@@ -369,6 +416,29 @@ class ResourceEditPage extends React.Component {
     return this.props.t;
   }
 
+  renderScanResult() {
+    const result = this.state.scanResult;
+    if (!result) {
+      return null;
+    }
+    if (result.code) {
+      return (
+        <div className="passbob-scan-result success" role="status">
+          <Trans>Read from this page, current code</Trans> <strong>{result.code}</strong>
+        </div>
+      );
+    }
+    return (
+      <div className="passbob-scan-result warning" role="status">
+        {result.error === QR_SCAN_ERRORS.PAGE_UNREADABLE && <Trans>This page cannot be read.</Trans>}
+        {result.error === QR_SCAN_ERRORS.NO_QR_CODE && (
+          <Trans>No QR code found. Scroll it into view, then scan again.</Trans>
+        )}
+        {result.error === QR_SCAN_ERRORS.NOT_TOTP && <Trans>This QR code is not an authenticator key.</Trans>}
+      </div>
+    );
+  }
+
   renderPasswordWarning() {
     if (!this.state.passwordWarning) {
       return null;
@@ -507,18 +577,32 @@ class ResourceEditPage extends React.Component {
                   <label htmlFor="edit-totp">
                     <Trans>Authenticator key (TOTP)</Trans>
                   </label>
-                  <input
-                    id="edit-totp"
-                    name="secret.totp.secret_key"
-                    value={secret?.totp?.secret_key || ""}
-                    onChange={this.handleInputChange}
-                    disabled={disabled}
-                    className="fluid passbob-totp-key"
-                    maxLength="1024"
-                    type="text"
-                    autoComplete="off"
-                    spellCheck="false"
-                  />
+                  <div className="password-button-inline">
+                    <input
+                      id="edit-totp"
+                      name="secret.totp.secret_key"
+                      value={secret?.totp?.secret_key || ""}
+                      onChange={this.handleInputChange}
+                      disabled={disabled}
+                      className="fluid passbob-totp-key"
+                      maxLength="1024"
+                      type="text"
+                      autoComplete="off"
+                      spellCheck="false"
+                    />
+                    <button
+                      type="button"
+                      onClick={this.handleScanQrCodeClick}
+                      className={`passbob-scan-qr button-icon button ${disabled || this.state.isScanning ? "disabled" : ""}`}
+                      title={this.translate("Scan the QR code on this page")}
+                    >
+                      {this.state.isScanning ? <SpinnerSVG /> : <QrCodeSVG />}
+                      <span className="visually-hidden">
+                        <Trans>Scan the QR code on this page</Trans>
+                      </span>
+                    </button>
+                  </div>
+                  {this.renderScanResult()}
                   {this.hasError("totp", "secret_key") && (
                     <div className="error-message">
                       <Trans>The key is not valid.</Trans>

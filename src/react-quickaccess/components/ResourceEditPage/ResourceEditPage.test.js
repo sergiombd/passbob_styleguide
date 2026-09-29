@@ -13,6 +13,10 @@
 import { waitFor } from "@testing-library/react";
 import "../../../../test/mocks/mockPortal";
 import ResourceEditPagePage from "./ResourceEditPage.test.page";
+import PassbobQrScanService, {
+  PassbobQrScanError,
+  QR_SCAN_ERRORS,
+} from "../../../shared/services/passbob/passbobQrScanService";
 import { defaultProps, readOnlyResourceDto, v5ResourceDto } from "./ResourceEditPage.test.data";
 import {
   TEST_RESOURCE_TYPE_V5_DEFAULT,
@@ -244,5 +248,69 @@ describe("ResourceEditPage", () => {
 
     await waitFor(() => expect(page.history.goBack).toHaveBeenCalled());
     expect(props.context.port.request).not.toHaveBeenCalledWith("passbolt.secret.find-by-resource-id", resource.id);
+  });
+
+  describe("Scan the QR code on the page", () => {
+    const scannedTotp = { secret_key: TOTP_KEY, algorithm: "SHA256", digits: 8, period: 60 };
+
+    it("As LU, I can fill the TOTP from the QR code shown on the page", async () => {
+      const resource = v5ResourceDto();
+      const props = defaultProps({ resource });
+      props.context.openerTabId = 42;
+      const update = mockPort(props, {
+        object_type: "PASSBOLT_SECRET_DATA",
+        password: STRONG_PASSWORD,
+        description: "",
+      });
+      const scan = jest.spyOn(PassbobQrScanService, "scanPage").mockImplementation(async () => scannedTotp);
+      const page = await renderForm(props);
+
+      await page.user.click(page.scanButton);
+
+      await waitFor(() => expect(page.totpKey.value).toBe(TOTP_KEY));
+      expect(scan).toHaveBeenCalledWith(props.context.port, 42);
+      expect(page.scanResult.classList.contains("success")).toBe(true);
+      expect(page.scanResult.textContent).toMatch(/current code \d{8}/);
+
+      await page.submit();
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      const [resourceDto, secretDto] = update.mock.calls[0];
+      expect(resourceDto.resource_type_id).toBe(TEST_RESOURCE_TYPE_V5_DEFAULT_TOTP);
+      expect(secretDto.totp).toStrictEqual(scannedTotp);
+    });
+
+    it.each([
+      [QR_SCAN_ERRORS.NO_QR_CODE, "No QR code found"],
+      [QR_SCAN_ERRORS.NOT_TOTP, "not an authenticator key"],
+      [QR_SCAN_ERRORS.PAGE_UNREADABLE, "cannot be read"],
+    ])("As LU, I am told when the scan fails: %s", async (reason, message) => {
+      const resource = v5ResourceDto();
+      const props = defaultProps({ resource });
+      mockPort(props, { object_type: "PASSBOLT_SECRET_DATA", password: STRONG_PASSWORD, description: "" });
+      jest.spyOn(PassbobQrScanService, "scanPage").mockImplementation(async () => {
+        throw new PassbobQrScanError(reason);
+      });
+      const page = await renderForm(props);
+
+      await page.user.click(page.scanButton);
+
+      await waitFor(() => expect(page.scanResult?.textContent).toContain(message));
+      expect(page.scanResult.classList.contains("warning")).toBe(true);
+      expect(page.totpKey.value).toBe("");
+    });
+
+    it("As LU, typing the key myself hides the scan result", async () => {
+      const resource = v5ResourceDto();
+      const props = defaultProps({ resource });
+      mockPort(props, { object_type: "PASSBOLT_SECRET_DATA", password: STRONG_PASSWORD, description: "" });
+      jest.spyOn(PassbobQrScanService, "scanPage").mockImplementation(async () => scannedTotp);
+      const page = await renderForm(props);
+
+      await page.user.click(page.scanButton);
+      await waitFor(() => expect(page.scanResult).not.toBeNull());
+      await page.user.type(page.totpKey, "A");
+
+      expect(page.scanResult).toBeNull();
+    });
   });
 });

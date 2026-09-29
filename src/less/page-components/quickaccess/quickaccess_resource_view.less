@@ -231,3 +231,26 @@
     line-height: 1.4;
   }
 }
+
+/* Passbob: scan the TOTP QR code shown on the page. */
+.quickaccess .passbob-resource-edit {
+  .passbob-scan-result {
+    margin-top: .6rem;
+    padding: .6rem 1rem;
+    border-radius: .8rem;
+    font-size: 1.2rem;
+    line-height: 1.4;
+    color: var(--Text-and-icons-Main-text);
+
+    &.success {
+      background: var(--Palette-Success);
+    }
+    &.warning {
+      background: var(--Palette-Warning);
+    }
+    strong {
+      font-family: "Source Code Pro", ui-monospace, monospace;
+      letter-spacing: .04em;
+    }
+  }
+}
