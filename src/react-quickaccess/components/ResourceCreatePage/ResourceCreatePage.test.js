@@ -19,7 +19,9 @@ import { defaultProps } from "./ResourceCreatePage.test.data";
 import { ConfirmCreatePageRuleVariations } from "../ConfirmCreatePage/ConfirmCreatePage";
 import {
   TEST_RESOURCE_TYPE_PASSWORD_AND_DESCRIPTION,
+  TEST_RESOURCE_TYPE_PASSWORD_DESCRIPTION_TOTP,
   TEST_RESOURCE_TYPE_V5_DEFAULT,
+  TEST_RESOURCE_TYPE_V5_DEFAULT_TOTP,
 } from "../../../shared/models/entity/resourceType/resourceTypeEntity.test.data";
 import ResourceCreatePagePage from "./ResourceCreatePage.test.page";
 import { waitForTrue } from "../../../../test/utils/waitFor";
@@ -31,6 +33,9 @@ import MetadataTypesSettingsEntity from "../../../shared/models/entity/metadata/
 import { defaultMetadataTypesSettingsV6Dto } from "../../../shared/models/entity/metadata/metadataTypesSettingsEntity.test.data";
 import { SECRET_DATA_OBJECT_TYPE } from "../../../shared/models/entity/secretData/secretDataEntity";
 import { act } from "react";
+import ResourceTypesCollection from "../../../shared/models/entity/resourceType/resourceTypesCollection";
+import { resourceTypesCollectionWithoutTOTP } from "../../../shared/models/entity/resourceType/resourceTypesCollection.test.data";
+import PassbobQrScanService from "../../../shared/services/passbob/passbobQrScanService";
 
 // Reset the modules before each test.
 beforeEach(() => {
@@ -662,5 +667,148 @@ describe("ResourceCreatePage (Passbob) - drafts", () => {
     await page.clickOnBackButton();
 
     expect(props.draftCleared).toBeGreaterThan(0);
+  });
+});
+
+describe("ResourceCreatePage (Passbob) - authenticator key", () => {
+  const tabInfo = { name: "AWS console", uris: ["https://console.aws.amazon.com"] };
+  const TOTP_KEY = "JBSWY3DPEHPK3PXP";
+  const scannedTotp = { secret_key: TOTP_KEY, algorithm: "SHA256", digits: 8, period: 60 };
+
+  /**
+   * Props with a tab to prefill from and a resources.create listener keeping what is created.
+   * @param {object} props The props to override
+   * @returns {object}
+   */
+  const createProps = (props = {}) => {
+    const p = defaultProps(props);
+    p.context.port.addRequestListener("passbolt.quickaccess.prepare-resource", () => tabInfo);
+    p.created = [];
+    p.context.port.addRequestListener("passbolt.resources.create", (resourceDto, secretDto) => {
+      p.created.push({ resourceDto, secretDto });
+      return defaultResourceDto();
+    });
+    p.draftSaved = [];
+    p.context.port.addRequestListener("passbob.draft.save", (d) => p.draftSaved.push(d));
+    return p;
+  };
+
+  const renderForm = async (props) => {
+    const page = new ResourceCreatePagePage(props);
+    await screen.findByDisplayValue(tabInfo.name);
+    await page.setFormWith({ username: "smoubayed", password: "P4ssb0ltP4ssb0lt-Str0ng" });
+    return page;
+  };
+
+  it("creates a password with TOTP when an authenticator key is given (v4)", async () => {
+    expect.assertions(4);
+    const props = createProps();
+    const page = await renderForm(props);
+
+    await page.setFormWith({ totp: TOTP_KEY });
+    await page.submitForm();
+
+    await waitForTrue(() => props.created.length === 1);
+    const { resourceDto, secretDto } = props.created[0];
+    expect(resourceDto.resource_type_id).toStrictEqual(TEST_RESOURCE_TYPE_PASSWORD_DESCRIPTION_TOTP);
+    expect(resourceDto.metadata.username).toStrictEqual("smoubayed");
+    expect(secretDto.password).toStrictEqual("P4ssb0ltP4ssb0lt-Str0ng");
+    expect(secretDto.totp).toStrictEqual({ secret_key: TOTP_KEY, algorithm: "SHA1", digits: 6, period: 30 });
+  });
+
+  it("creates a v5 password with TOTP from the QR code on the page", async () => {
+    expect.assertions(6);
+    const metadataTypeSettings = new MetadataTypesSettingsEntity(defaultMetadataTypesSettingsV6Dto());
+    const props = createProps({ metadataTypeSettings });
+    props.context.openerTabId = 42;
+    const scan = jest.spyOn(PassbobQrScanService, "scanPage").mockImplementation(async () => scannedTotp);
+    const page = await renderForm(props);
+
+    await page.user.click(page.scanButton);
+    await act(async () => {});
+    expect(page.totp.value).toStrictEqual(TOTP_KEY);
+    expect(scan).toHaveBeenCalledWith(props.context.port, 42);
+    expect(page.scanResult.classList.contains("success")).toBe(true);
+
+    await page.submitForm();
+
+    await waitForTrue(() => props.created.length === 1);
+    const { resourceDto, secretDto } = props.created[0];
+    expect(resourceDto.resource_type_id).toStrictEqual(TEST_RESOURCE_TYPE_V5_DEFAULT_TOTP);
+    expect(secretDto.totp).toStrictEqual(scannedTotp);
+    expect(secretDto.object_type).toStrictEqual(SECRET_DATA_OBJECT_TYPE);
+  });
+
+  it("creates a password without TOTP when the key is left empty", async () => {
+    expect.assertions(2);
+    const props = createProps();
+    const page = await renderForm(props);
+
+    await page.submitForm();
+
+    await waitForTrue(() => props.created.length === 1);
+    expect(props.created[0].resourceDto.resource_type_id).toStrictEqual(TEST_RESOURCE_TYPE_PASSWORD_AND_DESCRIPTION);
+    expect(props.created[0].secretDto.totp).toBeUndefined();
+  });
+
+  it("does not create the password when the key is not valid", async () => {
+    expect.assertions(2);
+    const props = createProps();
+    const page = await renderForm(props);
+
+    await page.setFormWith({ totp: "0189" });
+    await page.submitForm();
+
+    await waitForTrue(() => page.totp.closest(".input").classList.contains("error"));
+    expect(page.totp.closest(".input").classList.contains("error")).toBe(true);
+    expect(props.created).toHaveLength(0);
+  });
+
+  it("hides the field when the organization has no TOTP resource type", async () => {
+    expect.assertions(1);
+    const props = createProps({ resourceTypes: new ResourceTypesCollection(resourceTypesCollectionWithoutTOTP()) });
+    const page = new ResourceCreatePagePage(props);
+    await screen.findByDisplayValue(tabInfo.name);
+
+    expect(page.totp).toBeNull();
+  });
+
+  it("keeps the key, encrypted, in the draft", async () => {
+    expect.assertions(1);
+    const props = createProps();
+    const page = await renderForm(props);
+
+    await page.setFormWith({ totp: TOTP_KEY });
+    await act(async () => jest.advanceTimersByTime(300));
+
+    const lastDraft = props.draftSaved[props.draftSaved.length - 1];
+    expect(JSON.parse(lastDraft.secrets.totp).secret_key).toStrictEqual(TOTP_KEY);
+  });
+
+  it("restores the key from the draft", async () => {
+    expect.assertions(1);
+    const props = createProps();
+    props.context.port.addRequestListener("passbob.draft.get", () => ({
+      pathname: "/webAccessibleResources/quickaccess/resources/create",
+      fields: { name: "AWS", uri: "", username: "" },
+      secrets: { password: "draft-password", totp: JSON.stringify(scannedTotp) },
+    }));
+    const page = new ResourceCreatePagePage(props);
+
+    await screen.findByDisplayValue("AWS");
+    expect(page.totp.value).toStrictEqual(TOTP_KEY);
+  });
+
+  it("keeps the key when going to the password generator", async () => {
+    expect.assertions(1);
+    const props = createProps();
+    const page = await renderForm(props);
+
+    await page.setFormWith({ totp: TOTP_KEY });
+    await page.user.click(document.querySelector(".password-generator"));
+
+    expect(props.prepareResourceContext.onPrepareResource).toHaveBeenCalledWith(
+      expect.objectContaining({ totp: expect.objectContaining({ secret_key: TOTP_KEY }) }),
+    );
   });
 });
