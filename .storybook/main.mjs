@@ -16,7 +16,13 @@ const config = {
     disableWhatsNewNotifications: true,
   },
 
-  staticDirs: ["../src", { from: "../src", to: "/webAccessibleResources" }, { from: "../build/css", to: "/css" }],
+  staticDirs: [
+    "../src",
+    { from: "../src", to: "/webAccessibleResources" },
+    { from: "../build/css", to: "/css" },
+    // The theme CSS loads its fonts from ../../fonts, as in the extension.
+    { from: "../src/fonts", to: "/css/fonts" },
+  ],
 
   env: (config) => ({
     ...config,
