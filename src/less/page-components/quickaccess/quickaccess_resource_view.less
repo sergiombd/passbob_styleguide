@@ -219,7 +219,7 @@
   }
 
   .passbob-totp-key {
-    font-family: "Source Code Pro", ui-monospace, monospace;
+    font-family: "Geist Mono", ui-monospace, monospace;
   }
 
   .passbob-edit-warning {
@@ -232,8 +232,20 @@
   }
 }
 
+/* Passbob: the authenticator key field, its scan button next to it. */
+.quickaccess .passbob-totp-field .password-button-inline {
+  display: flex;
+  gap: .8rem;
+
+  .passbob-totp-key {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 /* Passbob: scan the TOTP QR code shown on the page. */
-.quickaccess .passbob-resource-edit {
+.quickaccess .passbob-resource-edit,
+.quickaccess .passbob-totp-field {
   .passbob-scan-result {
     margin-top: .6rem;
     padding: .6rem 1rem;
@@ -249,7 +261,7 @@
       background: var(--Palette-Warning);
     }
     strong {
-      font-family: "Source Code Pro", ui-monospace, monospace;
+      font-family: "Geist Mono", ui-monospace, monospace;
       letter-spacing: .04em;
     }
   }
