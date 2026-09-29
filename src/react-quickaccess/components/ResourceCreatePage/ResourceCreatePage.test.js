@@ -725,7 +725,10 @@ describe("ResourceCreatePage (Passbob) - authenticator key", () => {
     const page = await renderForm(props);
 
     await page.user.click(page.scanButton);
-    await act(async () => {});
+    // Wait for the scan the click started, then for the state update that follows it.
+    await act(async () => {
+      await scan.mock.results[0].value;
+    });
     expect(page.totp.value).toStrictEqual(TOTP_KEY);
     expect(scan).toHaveBeenCalledWith(props.context.port, 42);
     expect(page.scanResult.classList.contains("success")).toBe(true);
