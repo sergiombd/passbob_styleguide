@@ -1,0 +1,389 @@
+/**
+ * Passbob ~ fork of the Passbolt browser extension
+ *
+ * Licensed under GNU Affero General Public License version 3 of the or any later version.
+ * Based on Passbolt, Copyright (c) Passbolt SA (https://www.passbolt.com)
+ *
+ * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
+ */
+
+/*
+ * Passbob: the quickaccess home. Chips, the page's resources with a Fill button, the recently used ones, a footer
+ * with the keyboard shortcuts. Colors come from the theme tokens only, so it follows light and dark.
+ */
+
+.quickaccess .search-wrapper {
+  padding: .4rem 1.2rem 1rem;
+
+  .input.search input {
+    height: 3.8rem;
+    border-radius: 1rem;
+    background: var(--Palette-Gradient-1);
+    border: 1px solid var(--Field-Field-border);
+    box-shadow: 0 1px 2px var(--Palette-Shadow);
+    font-size: 1.3rem;
+
+    &:focus {
+      border-color: var(--Field-Field-border-focus);
+      box-shadow: 0 0 0 3px var(--Palette-Select);
+    }
+  }
+}
+
+.quickaccess .passbob-home {
+  display: flex;
+  flex-direction: column;
+  background: var(--Quick-Access-Panel-background);
+
+  kbd {
+    display: inline-block;
+    min-width: 1.6rem;
+    padding: .1rem .5rem;
+    border: 1px solid var(--Palette-Gradient-3);
+    border-radius: .4rem;
+    background: var(--Palette-Gradient-1);
+    color: var(--Text-and-icons-Main-text);
+    font: 500 1.05rem "Geist Mono", ui-monospace, monospace;
+    text-align: center;
+  }
+}
+
+.quickaccess .passbob-chips {
+  display: flex;
+  gap: .6rem;
+  padding: 0 1.2rem 1.2rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  .passbob-chip {
+    flex-shrink: 0;
+    height: 2.6rem;
+    padding: 0 1rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 1.3rem;
+    border: 1px solid var(--Palette-Gradient-3);
+    background: var(--Palette-Gradient-1);
+    color: var(--Text-and-icons-Secondary-text);
+    font-size: 1.2rem;
+    font-weight: 500;
+    white-space: nowrap;
+    text-decoration: none;
+
+    &:hover {
+      color: var(--Text-and-icons-Main-text);
+      border-color: var(--Palette-Gradient-5);
+    }
+
+    &.active {
+      background: var(--Text-and-icons-Main-text);
+      border-color: var(--Text-and-icons-Main-text);
+      color: var(--Quick-Access-Panel-background);
+    }
+  }
+}
+
+.quickaccess .passbob-home-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 .6rem .8rem;
+}
+
+.quickaccess .passbob-section + .passbob-section {
+  margin-top: 1rem;
+}
+
+.quickaccess .passbob-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .2rem .8rem .6rem;
+
+  h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    line-height: 1.4rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--Text-and-icons-Secondary-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  span {
+    flex-shrink: 0;
+    font-size: 1.1rem;
+    color: var(--Text-and-icons-Secondary-text);
+  }
+}
+
+.quickaccess .passbob-empty,
+.quickaccess .passbob-loading {
+  margin: 0 .8rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px dashed var(--Palette-Gradient-4);
+  color: var(--Text-and-icons-Secondary-text);
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+.quickaccess .passbob-loading {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  border: 0;
+}
+
+.quickaccess .passbob-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.quickaccess .passbob-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 5.2rem;
+  padding: 0 .6rem 0 0;
+  border-radius: 1rem;
+
+  &:hover {
+    background: var(--Quick-Access-Filter-hover);
+  }
+
+  &.selected {
+    background: var(--Palette-Select);
+    box-shadow: inset 0 0 0 1px var(--Palette-Select-highlight-2);
+  }
+
+  .passbob-row-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    align-self: stretch;
+    padding: 0 .8rem;
+    border-radius: 1rem;
+    color: inherit;
+    text-decoration: none;
+
+    &:focus-visible {
+      outline: 2px solid var(--States-Focus);
+      outline-offset: -2px;
+    }
+  }
+
+  .passbob-row-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+  }
+
+  .passbob-row-name {
+    font-size: 1.35rem;
+    font-weight: 500;
+    color: var(--Text-and-icons-Main-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .passbob-row-subtitle {
+    font-size: 1.15rem;
+    color: var(--Text-and-icons-Secondary-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .passbob-row-actions {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: .2rem;
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+
+  // Actions show on hover, keyboard selection and focus, the Fill button of the page's resources always shows.
+  &:hover .passbob-row-actions,
+  &.selected .passbob-row-actions,
+  &:focus-within .passbob-row-actions {
+    opacity: 1;
+  }
+
+  .passbob-row-actions:has(.passbob-fill-button) {
+    opacity: 1;
+
+    .passbob-row-action {
+      opacity: 0;
+      transition: opacity 120ms;
+    }
+  }
+
+  &:hover,
+  &.selected,
+  &:focus-within {
+    .passbob-row-actions .passbob-row-action {
+      opacity: 1;
+    }
+  }
+}
+
+.quickaccess .passbob-avatar {
+  flex-shrink: 0;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: .8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 600;
+
+  &.tone-indigo { background: #E8E6FD; color: #3B35B8; }
+  &.tone-amber { background: #FDE8D6; color: #8F3A0A; }
+  &.tone-green { background: #DDF2E6; color: #1C6B43; }
+  &.tone-blue { background: #E1ECFB; color: #1F4F96; }
+  &.tone-pink { background: #F7E1EE; color: #8A2461; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .quickaccess .passbob-avatar {
+    &.tone-indigo { background: #2B2860; color: #C9C6FF; }
+    &.tone-amber { background: #43290F; color: #F6C58F; }
+    &.tone-green { background: #16392A; color: #9BDDB8; }
+    &.tone-blue { background: #172F52; color: #A9C8F5; }
+    &.tone-pink { background: #40182F; color: #F2A9D2; }
+  }
+}
+
+.quickaccess .passbob-row-action,
+.quickaccess .passbob-fill-button {
+  // Undo the global button look (70px minimum, shadow).
+  min-width: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.quickaccess .passbob-row-action {
+  width: 2.8rem;
+  height: 2.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: .7rem;
+  background: transparent;
+  color: var(--Text-and-icons-Secondary-text);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--Palette-Gradient-1);
+    color: var(--Text-and-icons-Main-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--States-Focus);
+  }
+
+  svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+.quickaccess .passbob-home .passbob-fill-button {
+  height: 2.8rem;
+  min-width: 4.4rem;
+  margin-left: .4rem;
+  padding: 0 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: .7rem;
+  background: var(--Quick-Access-Primary-button-background);
+  color: var(--Quick-Access-Primary-button-text);
+  font-size: 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(1.08);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--States-Focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: wait;
+  }
+
+  svg {
+    width: 1.4rem;
+    height: 1.4rem;
+  }
+}
+
+.quickaccess .passbob-home-error {
+  margin: 0 1.2rem .8rem;
+}
+
+.quickaccess .passbob-home-footer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 4rem;
+  padding: 0 1.2rem;
+  border-top: 1px solid var(--Palette-Gradient-3);
+  background: var(--Palette-Gradient-1);
+  font-size: 1.1rem;
+  color: var(--Text-and-icons-Secondary-text);
+
+  .passbob-shortcuts {
+    display: flex;
+    gap: 1rem;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .passbob-new-button {
+    margin-left: auto;
+    flex-shrink: 0;
+    height: 2.6rem;
+    padding: 0 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    border: 1px solid var(--Palette-Gradient-3);
+    border-radius: .7rem;
+    background: var(--Quick-Access-Panel-background);
+    color: var(--Text-and-icons-Main-text);
+    font-size: 1.2rem;
+    font-weight: 500;
+    text-decoration: none;
+
+    &:hover {
+      border-color: var(--Palette-Gradient-5);
+    }
+  }
+}

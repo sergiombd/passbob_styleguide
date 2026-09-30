@@ -32,20 +32,24 @@ import {
   RESOURCE_TYPE_PASSWORD_AND_DESCRIPTION_SLUG,
   RESOURCE_TYPE_V5_DEFAULT_SLUG,
 } from "../../../shared/models/entity/resourceType/resourceTypeSchemasDefinition";
-import DisplayResourceUrisBadge from "../../../react-extension/components/Resource/DisplayResourceUrisBadge/DisplayResourceUrisBadge";
 import CanSuggestService from "../../../shared/services/canSuggestService/canSuggestService";
-import CaretRightSVG from "../../../img/svg/caret_right.svg";
-import FilterSVG from "../../../img/svg/filter.svg";
-import UsersSVG from "../../../img/svg/users.svg";
-import TagV2SVG from "../../../img/svg/tag_v2.svg";
 import MetadataKeysSettingsEntity from "../../../shared/models/entity/metadata/metadataKeysSettingsEntity";
 import { withMetadataKeysSettingsLocalStorage } from "../../../shared/context/MetadataKeysSettingsLocalStorageContext/MetadataKeysSettingsLocalStorageContext";
 import { sortResourcesByUriMatchingScore } from "../../../shared/utils/sortUtils";
 import { withActiveSessionLocalStorage } from "../../../shared/context/ActiveSession/ActiveSessionLocalStorageContext";
 import UserActiveSessionEntity from "../../../shared/models/entity/session/userActiveSessionEntity";
+import PassbobResourceRow, { COPY_ACTIONS, getHost } from "../PassbobResourceRow/PassbobResourceRow";
+import { ResourceEditPage } from "../ResourceEditPage/ResourceEditPage";
+import SecretServiceWorkerService from "../../../shared/services/serviceWorker/secret/secretServiceWorkerService";
+import ClipboardServiceWorkerService from "../../../shared/services/serviceWorker/clipboard/clipboardServiceWorkerService";
+import { TotpCodeGeneratorService } from "../../../shared/services/otp/TotpCodeGeneratorService";
 
 const SUGGESTED_RESOURCES_LIMIT = 20;
 const BROWSED_RESOURCES_LIMIT = 100;
+// Passbob: how many recently used resources the home shows, how long a copy shows its check mark.
+const RECENT_RESOURCES_SHOWN = 5;
+const COPY_DONE_DELAY_IN_MS = 1500;
+const VIEW_ROUTE = "/webAccessibleResources/quickaccess/resources/view";
 
 class HomePage extends React.Component {
   /**
@@ -73,6 +77,11 @@ class HomePage extends React.Component {
     return {
       activeTabUrl: null,
       usingOnThisTab: false,
+      fillingResourceId: null, // Passbob: the resource being filled in
+      recentResourceIds: [], // Passbob: the resources used last
+      copyState: null, // Passbob: the last copy {resourceId, action, status}
+      selectedIndex: 0, // Passbob: the row selected with the keyboard
+      actionError: null, // Passbob: why the last copy failed
     };
   }
 
@@ -96,6 +105,32 @@ class HomePage extends React.Component {
     this.props.context.updateSearch(this.props.location?.state?.passbobRestoredSearch || "");
 
     this.loadActiveTabUrl();
+    this.loadRecentResourceIds();
+    document.addEventListener("keydown", this.handleKeyDown);
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener("keydown", this.handleKeyDown);
+    clearTimeout(this.copyDoneTimeout);
+  }
+
+  /**
+   * Passbob: go back to the first row when the search changes.
+   * @param {object} prevProps The previous props
+   */
+  componentDidUpdate(prevProps) {
+    if (prevProps.context.search !== this.props.context.search && this.state.selectedIndex !== 0) {
+      this.setState({ selectedIndex: 0 });
+    }
+  }
+
+  /**
+   * Passbob: load the resources used last.
+   * @returns {Promise<void>}
+   */
+  async loadRecentResourceIds() {
+    const recentResourceIds = await PassbobStorageService.getRecentResourceIds(this.props.context.storage);
+    this.setState({ recentResourceIds });
   }
 
   /**
@@ -103,6 +138,9 @@ class HomePage extends React.Component {
    */
   initEventHandlers() {
     this.handleUseOnThisTabClick = this.handleUseOnThisTabClick.bind(this);
+    this.handleCopy = this.handleCopy.bind(this);
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleRowHover = this.handleRowHover.bind(this);
   }
 
   /**
@@ -165,7 +203,11 @@ class HomePage extends React.Component {
    * @returns {Promise<void>}
    */
   async handleUseOnThisTabClick(resource) {
-    this.setState({ usingOnThisTab: true });
+    if (this.state.usingOnThisTab) {
+      return;
+    }
+    this.setState({ usingOnThisTab: true, fillingResourceId: resource.id, useOnThisTabError: null });
+    PassbobStorageService.addRecentResourceId(this.props.context.storage, resource.id);
     try {
       await this.props.context.port.request(
         "passbolt.quickaccess.use-resource-on-current-tab",
@@ -183,11 +225,12 @@ class HomePage extends React.Component {
       });
     } catch (error) {
       if (error && error.name === "UserAbortsOperationError") {
-        this.setState({ usingOnThisTab: false });
+        this.setState({ usingOnThisTab: false, fillingResourceId: null });
       } else {
         console.error("An error occured", error);
         this.setState({
           usingOnThisTab: false,
+          fillingResourceId: null,
           useOnThisTabError: this.props.t(
             "Unable to use the password on this page. Copy and paste the information instead.",
           ),
@@ -195,6 +238,158 @@ class HomePage extends React.Component {
       }
     }
   }
+
+  /**
+   * Passbob: copy a field of a resource, secrets are decrypted on demand and cleared from the clipboard later.
+   * @param {object} resource The resource
+   * @param {string} action One of COPY_ACTIONS
+   * @returns {Promise<void>}
+   */
+  async handleCopy(resource, action) {
+    if (this.state.copyState?.status === "processing") {
+      return;
+    }
+    const clipboard = new ClipboardServiceWorkerService(this.props.context.port);
+    this.setState({ copyState: { resourceId: resource.id, action, status: "processing" }, actionError: null });
+    try {
+      if (action === COPY_ACTIONS.USERNAME) {
+        await clipboard.copy(resource.metadata?.username || "");
+      } else {
+        if (!this.canCopySecret) {
+          throw new Error(this.props.t("You are not allowed to copy secrets."));
+        }
+        const secretService = new SecretServiceWorkerService(this.props.context.port, this.props.activeSession);
+        const secret = await secretService.findByResourceId(resource.id);
+        const value = action === COPY_ACTIONS.TOTP ? this.generateTotpCode(secret) : this.getPassword(secret);
+        if (!value) {
+          throw new Error(
+            action === COPY_ACTIONS.TOTP
+              ? this.props.t("This resource has no one-time code.")
+              : this.props.t("The password is empty and cannot be copied to clipboard."),
+          );
+        }
+        await clipboard.copyTemporarily(value);
+      }
+      PassbobStorageService.addRecentResourceId(this.props.context.storage, resource.id);
+      this.setState({ copyState: { resourceId: resource.id, action, status: "done" } });
+      clearTimeout(this.copyDoneTimeout);
+      this.copyDoneTimeout = setTimeout(() => this.setState({ copyState: null }), COPY_DONE_DELAY_IN_MS);
+    } catch (error) {
+      this.setState({ copyState: null });
+      if (error?.name !== "UserAbortsOperationError") {
+        console.error(error);
+        this.setState({ actionError: error?.message || String(error) });
+      }
+    }
+  }
+
+  /**
+   * @param {object|string} secret The decrypted secret, a string for the legacy password string resources
+   * @returns {string}
+   */
+  getPassword(secret) {
+    return typeof secret === "string" ? secret : secret?.password;
+  }
+
+  /**
+   * @param {object} secret The decrypted secret
+   * @returns {string|null}
+   */
+  generateTotpCode(secret) {
+    return secret?.totp ? TotpCodeGeneratorService.generate(secret.totp) : null;
+  }
+
+  /**
+   * Passbob: the mouse selects the row it is on, as the keyboard does.
+   * @param {object} resource The resource
+   */
+  handleRowHover(resource) {
+    const index = this.visibleRows.findIndex((row) => row.resource.id === resource.id);
+    if (index >= 0 && index !== this.state.selectedIndex) {
+      this.setState({ selectedIndex: index });
+    }
+  }
+
+  /**
+   * Passbob: arrows select a row, Enter fills it (or opens it), C copies its password, T its one-time code, / goes to
+   * the search. Letters are left to the inputs.
+   * @param {KeyboardEvent} event
+   */
+  handleKeyDown(event) {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    const rows = this.visibleRows;
+    const isTyping = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName);
+    const selected = rows[Math.min(this.state.selectedIndex, rows.length - 1)];
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (rows.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      const selectedIndex = (this.state.selectedIndex + step + rows.length) % rows.length;
+      this.setState({ selectedIndex });
+    } else if (event.key === "Enter" && selected && (isTyping || event.target === document.body)) {
+      event.preventDefault();
+      if (selected.canFill) {
+        this.handleUseOnThisTabClick(selected.resource);
+      } else {
+        this.props.history.push(`${VIEW_ROUTE}/${selected.resource.id}`);
+      }
+    } else if (!isTyping && selected && (event.key === "c" || event.key === "C")) {
+      event.preventDefault();
+      this.handleCopy(selected.resource, COPY_ACTIONS.PASSWORD);
+    } else if (!isTyping && selected && (event.key === "t" || event.key === "T")) {
+      event.preventDefault();
+      this.handleCopy(selected.resource, COPY_ACTIONS.TOTP);
+    } else if (!isTyping && event.key === "/") {
+      event.preventDefault();
+      document.querySelector(".search-wrapper input[name='search']")?.focus();
+    }
+  }
+
+  /**
+   * Passbob: whether the user may copy secrets.
+   * @returns {boolean}
+   */
+  get canCopySecret() {
+    return this.props.rbacContext.canIUseAction(uiActions.SECRETS_COPY);
+  }
+
+  /**
+   * Passbob: the host of the page the quickaccess is used on.
+   * @returns {string}
+   */
+  get activeTabHost() {
+    return getHost(this.state.activeTabUrl);
+  }
+
+  /**
+   * Passbob: the rows of the home, in display order: the page's resources and the recently used ones, or the search
+   * results. Computed on each render from the resources.
+   * @returns {Array<{resource: object, canFill: boolean, section: string}>}
+   */
+  get visibleRows() {
+    return this._visibleRows || [];
+  }
+
+  /**
+   * Passbob: the resources used last, the page's ones excluded.
+   * @param {Array} resources The resources
+   * @param {Array<string>} recentIds The ids used last
+   * @param {Array} excluded The resources already shown
+   * @returns {Array}
+   */
+  filterRecentResources = memoize((resources, recentIds, excluded) => {
+    const excludedIds = new Set(excluded.map((resource) => resource.id));
+    const byId = new Map(resources.map((resource) => [resource.id, resource]));
+    return recentIds
+      .map((id) => byId.get(id))
+      .filter((resource) => resource && !excludedIds.has(resource.id))
+      .slice(0, RECENT_RESOURCES_SHOWN);
+  });
 
   /**
    * Is password resource
@@ -271,195 +466,194 @@ class HomePage extends React.Component {
   }
 
   /**
+   * Passbob: the filters of the home, as chips.
+   * @returns {JSX}
+   */
+  renderChips() {
+    const canUseTag =
+      this.props.context.siteSettings.canIUse("tags") && this.props.rbacContext.canIUseAction(uiActions.TAGS_USE);
+    // The groups are retrieved from the API, the filter is not offered while in an offline session.
+    const isSessionOnline = Boolean(this.props.activeSession?.isSessionOnline);
+    const chips = [
+      { to: "/webAccessibleResources/quickaccess/resources/favorite", label: this.props.t("Favorites") },
+      { to: "/webAccessibleResources/quickaccess/resources/recently-modified", label: this.props.t("Recent") },
+      { to: "/webAccessibleResources/quickaccess/resources/shared-with-me", label: this.props.t("Shared with me") },
+      isSessionOnline && { to: "/webAccessibleResources/quickaccess/resources/group", label: this.props.t("Groups") },
+      canUseTag && { to: "/webAccessibleResources/quickaccess/resources/tag", label: this.props.t("Tags") },
+      { to: "/webAccessibleResources/quickaccess/more-filters", label: this.props.t("More") },
+    ].filter(Boolean);
+    return (
+      <nav className="passbob-chips" aria-label={this.props.t("Filters")}>
+        <span className="passbob-chip active" aria-current="page">
+          <Trans>All</Trans>
+        </span>
+        {chips.map((chip) => (
+          <Link key={chip.to} to={chip.to} className="passbob-chip">
+            {chip.label}
+          </Link>
+        ))}
+      </nav>
+    );
+  }
+
+  /**
+   * Passbob: a list of resource rows.
+   * @param {Array<{resource: object, canFill: boolean}>} rows The rows of the section
+   * @param {number} offset The index of the first row among all the rows
+   * @returns {JSX}
+   */
+  renderRows(rows, offset) {
+    return (
+      <ul className="passbob-rows">
+        {rows.map(({ resource, canFill }, index) => (
+          <PassbobResourceRow
+            key={resource.id}
+            resource={resource}
+            isSelected={offset + index === this.state.selectedIndex}
+            canFill={canFill}
+            canEdit={ResourceEditPage.canEdit(resource, this.props.activeSession)}
+            canCopySecret={this.canCopySecret}
+            hasPassword={Boolean(this.isPasswordResource(resource.resource_type_id))}
+            hasTotp={Boolean(this.isOTPResource(resource.resource_type_id))}
+            isFilling={this.state.fillingResourceId === resource.id}
+            copyState={this.state.copyState}
+            onFill={this.handleUseOnThisTabClick}
+            onCopy={this.handleCopy}
+            onHover={this.handleRowHover}
+          />
+        ))}
+      </ul>
+    );
+  }
+
+  /**
+   * Passbob: a section title with an optional count.
+   * @param {string|JSX} title The title
+   * @param {string} [aside] The text on the right
+   * @returns {JSX}
+   */
+  renderSectionTitle(title, aside) {
+    return (
+      <div className="passbob-section-title">
+        <h2>{title}</h2>
+        {aside && <span>{aside}</span>}
+      </div>
+    );
+  }
+
+  renderEmpty(text) {
+    return <p className="passbob-empty">{text}</p>;
+  }
+
+  /**
    * Component renderer.
    * @returns {JSX}
    */
   render() {
     const isReady = this.props.resources !== null && this.props.resourceTypes != null;
     const hasSearch = this.props.context.search?.length > 0;
-    const showSuggestedSection = !hasSearch;
-    const showBrowsedResourcesSection = hasSearch;
-    const showFiltersSection = !hasSearch;
-    const canUseTag =
-      this.props.context.siteSettings.canIUse("tags") && this.props.rbacContext.canIUseAction(uiActions.TAGS_USE);
-    // The groups are retrieved from the API, the filter is not offered while in an offline session.
-    const isSessionOnline = Boolean(this.props.activeSession?.isSessionOnline);
-    let browsedResources, suggestedResources;
+    let browsedResources = [];
+    let suggestedResources = [];
+    let recentResources = [];
 
     if (isReady) {
       const resources = this.resourcesFilterByResourceTypePasswordAndTotp;
       browsedResources = this.filterSearchedResources(resources, this.props.context.search);
       suggestedResources = this.filterSuggestedResources(resources, this.state.activeTabUrl);
+      recentResources = this.filterRecentResources(resources, this.state.recentResourceIds, suggestedResources);
     }
 
+    const suggestedIds = new Set(suggestedResources.map((resource) => resource.id));
+    const suggestedRows = suggestedResources.map((resource) => ({ resource, canFill: true }));
+    const recentRows = recentResources.map((resource) => ({ resource, canFill: false }));
+    const searchRows = browsedResources.map((resource) => ({ resource, canFill: suggestedIds.has(resource.id) }));
+    this._visibleRows = hasSearch ? searchRows : [...suggestedRows, ...recentRows];
+    const host = this.activeTabHost;
+
     return (
-      <div className="index-list">
-        <div className="list-container">
-          {showSuggestedSection && (
-            <div className={`list-section`}>
-              <div className="list-title">
-                <h2>
-                  <Trans>Suggested</Trans>
-                </h2>
-              </div>
-              <ul className="list-items">
-                {!isReady && (
-                  <li className="empty-entry">
-                    <SpinnerSVG />
-                    <p className="processing-text">
-                      <Trans>Retrieving your passwords</Trans>
-                    </p>
-                  </li>
-                )}
-                {isReady && suggestedResources.length === 0 && (
-                  <li className="empty-entry">
-                    <p>
-                      <Trans>No passwords found for the current page. You can use the search.</Trans>
-                    </p>
-                  </li>
-                )}
-                {isReady &&
-                  suggestedResources.length > 0 &&
-                  suggestedResources.map((resource) => (
-                    <li className="suggested-resource-entry" key={resource.id}>
-                      <button
-                        type="button"
-                        className="resource-details link"
-                        onClick={() => this.handleUseOnThisTabClick(resource)}
-                      >
-                        <div className="inline-resource-name">
-                          <span className="title">{resource.metadata.name}</span>
-                          <span className="username">
-                            {" "}
-                            {resource.metadata.username ? `(${resource.metadata.username})` : ""}
-                          </span>
-                        </div>
-                        <div className="uris">
-                          <span className="url">{resource.metadata.uris?.[0]}</span>
-                          {resource.metadata.uris?.length > 1 && (
-                            <DisplayResourceUrisBadge additionalUris={resource.metadata.uris?.slice(1)} />
-                          )}
-                        </div>
-                      </button>
-                      <Link
-                        className="chevron-right-wrapper"
-                        to={`/webAccessibleResources/quickaccess/resources/view/${resource.id}`}
-                      >
-                        <CaretRightSVG />
-                      </Link>
-                    </li>
-                  ))}
-              </ul>
+      <div className="passbob-home">
+        {this.renderChips()}
+        <div className="passbob-home-list">
+          {!isReady && (
+            <div className="passbob-loading">
+              <SpinnerSVG />
+              <Trans>Retrieving your passwords</Trans>
             </div>
           )}
-          {showBrowsedResourcesSection && (
-            <div className="list-section">
-              <div className="list-title">
-                <h2>
-                  <Trans>Browse</Trans>
-                </h2>
-              </div>
-              <ul className="list-items">
-                <React.Fragment>
-                  {!isReady && (
-                    <li className="empty-entry">
-                      <SpinnerSVG />
-                      <p className="processing-text">
-                        <Trans>Retrieving your passwords</Trans>
-                      </p>
-                    </li>
-                  )}
-                  {isReady && browsedResources.length === 0 && (
-                    <li className="empty-entry">
-                      <p>
-                        <Trans>No result match your search. Try with another search term.</Trans>
-                      </p>
-                    </li>
-                  )}
-                  {isReady &&
-                    browsedResources.length > 0 &&
-                    browsedResources.map((resource) => (
-                      <li className="browse-resource-entry" key={resource.id}>
-                        <Link to={`/webAccessibleResources/quickaccess/resources/view/${resource.id}`}>
-                          <div className="inline-resource-entry">
-                            <div className="inline-resource-name">
-                              <span className="title">{resource.metadata.name}</span>
-                              <span className="username">
-                                {" "}
-                                {resource.metadata.username ? `(${resource.metadata.username})` : ""}
-                              </span>
-                            </div>
-                            <div className="uris">
-                              <span className="url">{resource.metadata.uris?.[0]}</span>
-                              {resource.metadata.uris?.length > 1 && (
-                                <DisplayResourceUrisBadge additionalUris={resource.metadata.uris?.slice(1)} />
-                              )}
-                            </div>
-                          </div>
-                          <CaretRightSVG />
-                        </Link>
-                      </li>
-                    ))}
-                </React.Fragment>
-              </ul>
-            </div>
+          {isReady && !hasSearch && (
+            <>
+              <section className="passbob-section">
+                {this.renderSectionTitle(
+                  host ? this.props.t("This page · {{host}}", { host }) : this.props.t("This page"),
+                  suggestedRows.length > 0 ? this.props.t("{{count}} match", { count: suggestedRows.length }) : null,
+                )}
+                {suggestedRows.length > 0
+                  ? this.renderRows(suggestedRows, 0)
+                  : this.renderEmpty(this.props.t("Nothing saved for this page. Search, or create it."))}
+              </section>
+              {recentRows.length > 0 && (
+                <section className="passbob-section">
+                  {this.renderSectionTitle(this.props.t("Recently used"))}
+                  {this.renderRows(recentRows, suggestedRows.length)}
+                </section>
+              )}
+            </>
           )}
-          {showFiltersSection && (
-            <div className="list-section">
-              <div className="list-title">
-                <h2>
-                  <Trans>Browse</Trans>
-                </h2>
-              </div>
-              <ul className="list-items">
-                <li className="filter-entry">
-                  <Link to={"/webAccessibleResources/quickaccess/more-filters"}>
-                    <FilterSVG />
-                    <span className="filter-title">
-                      <Trans>Filters</Trans>
-                    </span>
-                    <CaretRightSVG />
-                  </Link>
-                </li>
-                {isSessionOnline && (
-                  <li className="filter-entry">
-                    <Link to={"/webAccessibleResources/quickaccess/resources/group"}>
-                      <UsersSVG />
-                      <span className="filter-title">
-                        <Trans>Groups</Trans>
-                      </span>
-                      <CaretRightSVG />
-                    </Link>
-                  </li>
-                )}
-                {canUseTag && (
-                  <li className="filter-entry">
-                    <Link to={"/webAccessibleResources/quickaccess/resources/tag"}>
-                      <TagV2SVG />
-                      <span className="filter-title">
-                        <Trans>Tags</Trans>
-                      </span>
-                      <CaretRightSVG />
-                    </Link>
-                  </li>
-                )}
-              </ul>
-            </div>
+          {isReady && hasSearch && (
+            <section className="passbob-section">
+              {this.renderSectionTitle(
+                this.props.t("Results"),
+                this.props.t("{{count}} found", { count: searchRows.length }),
+              )}
+              {searchRows.length > 0
+                ? this.renderRows(searchRows, 0)
+                : this.renderEmpty(this.props.t("No result match your search. Try with another search term."))}
+            </section>
           )}
         </div>
-        {this.hasMetadataTypesSettings() && this.canCreatePassword() && (
-          <div className="submit-wrapper button-after-list input">
+        {(this.state.useOnThisTabError || this.state.actionError) && (
+          <div className="passbob-home-error error-message" role="alert">
+            {this.state.useOnThisTabError || this.state.actionError}
+          </div>
+        )}
+        <footer className="passbob-home-footer">
+          <span className="passbob-shortcuts" aria-hidden="true">
+            <span>
+              <kbd>↑↓</kbd> <Trans>select</Trans>
+            </span>
+            <span>
+              <kbd>↵</kbd> <Trans>fill</Trans>
+            </span>
+            <span>
+              <kbd>C</kbd> <Trans>password</Trans>
+            </span>
+            <span>
+              <kbd>T</kbd> <Trans>code</Trans>
+            </span>
+          </span>
+          {this.hasMetadataTypesSettings() && this.canCreatePassword() && (
             <Link
               to={`/webAccessibleResources/quickaccess/resources/${this.shouldDisplayActionAbortedMissingMetadataKeys ? "action-aborted-missing-metadata-keys" : "create"}`}
               id="popupAction"
-              className="button primary big full-width"
+              className="passbob-new-button"
               role="button"
             >
-              <Trans>Create new</Trans>
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <Trans>New</Trans>
             </Link>
-            {this.state.useOnThisTabError && <div className="error-message">{this.state.useOnThisTabError}</div>}
-          </div>
-        )}
+          )}
+        </footer>
       </div>
     );
   }
