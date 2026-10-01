@@ -15,7 +15,7 @@ import React from "react";
 import Transition from "react-transition-group/Transition";
 import PropTypes from "prop-types";
 import { Trans, withTranslation } from "react-i18next";
-import { withRouter } from "react-router-dom";
+import { Link, withRouter } from "react-router-dom";
 import SpinnerSVG from "../../../img/svg/spinner.svg";
 import { uiActions } from "../../../shared/services/rbacs/uiActionEnumeration";
 import { withRbac } from "../../../shared/context/Rbac/RbacContext";
@@ -31,6 +31,7 @@ import CaretDownSVG from "../../../img/svg/caret_down.svg";
 import CaretRightSVG from "../../../img/svg/caret_right.svg";
 import CaretLeftSVG from "../../../img/svg/caret_left.svg";
 import GoSVG from "../../../img/svg/go.svg";
+import EditSVG from "../../../img/svg/edit.svg";
 import CopySVG from "../../../img/svg/copy.svg";
 import HealthCheckSuccessSvg from "../../../img/svg/healthcheck_success.svg";
 import EyeCloseSVG from "../../../img/svg/eye_close.svg";
@@ -41,6 +42,7 @@ import { withActiveSessionLocalStorage } from "../../../shared/context/ActiveSes
 import UserActiveSessionEntity from "../../../shared/models/entity/session/userActiveSessionEntity";
 import SecretServiceWorkerService from "../../../shared/services/serviceWorker/secret/secretServiceWorkerService";
 import PassbobStorageService from "../../../shared/services/passbob/passbobStorageService";
+import { ResourceEditPage } from "../ResourceEditPage/ResourceEditPage";
 
 const CLIPBOARD_TEMPORARY_CONTENT_FLUSH_DELAY_IN_SECOND = 30;
 
@@ -588,6 +590,18 @@ class ResourceViewPage extends React.Component {
             <CaretLeftSVG />
             <span className="primary-action-title">{this.state.resource.metadata?.name}</span>
           </a>
+          {ResourceEditPage.canEdit(this.state.resource, this.props.activeSession) && (
+            <Link
+              to={`/webAccessibleResources/quickaccess/resources/edit/${this.props.match.params.id}`}
+              className="secondary-action button-transparent button passbob-edit-action"
+              title={this.translate("Edit")}
+            >
+              <EditSVG />
+              <span className="visually-hidden">
+                <Trans>Edit</Trans>
+              </span>
+            </Link>
+          )}
           <a
             href={`${this.props.context.userSettings.getTrustedDomain()}/app/passwords/view/${this.props.match.params.id}`}
             className="secondary-action button-transparent button"
@@ -597,7 +611,7 @@ class ResourceViewPage extends React.Component {
           >
             <GoSVG />
             <span className="visually-hidden">
-              <Trans>Edit in passbolt</Trans>
+              <Trans>View it in passbolt</Trans>
             </span>
           </a>
         </div>

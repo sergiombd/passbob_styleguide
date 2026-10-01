@@ -174,4 +174,12 @@ export default class ResourceViewPagePage {
   async click(element) {
     await this.user.click(element);
   }
+
+  /**
+   * Passbob: the button opening the edit form of the resource.
+   * @returns {HTMLElement|null}
+   */
+  get editButton() {
+    return this._page.container.querySelector(".back-link .passbob-edit-action");
+  }
 }
