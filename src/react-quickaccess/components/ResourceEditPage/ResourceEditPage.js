@@ -32,6 +32,7 @@ import PasswordComplexity from "../../../shared/components/PasswordComplexity/Pa
 import SpinnerSVG from "../../../img/svg/spinner.svg";
 import CaretLeftSVG from "../../../img/svg/caret_left.svg";
 import DiceSVG from "../../../img/svg/dice.svg";
+import PassbobTotpField from "../PassbobTotpField/PassbobTotpField";
 
 /**
  * The permission type required to edit a resource (update).
@@ -70,6 +71,8 @@ class ResourceEditPage extends React.Component {
     this.handleInputChange = this.handleInputChange.bind(this);
     this.handleGeneratePasswordButtonClick = this.handleGeneratePasswordButtonClick.bind(this);
     this.handleFormSubmit = this.handleFormSubmit.bind(this);
+    this.handleTotpKeyChange = this.handleTotpKeyChange.bind(this);
+    this.setTotp = this.setTotp.bind(this);
   }
 
   async componentDidMount() {
@@ -218,6 +221,32 @@ class ResourceEditPage extends React.Component {
     }
     if (this.state.errors) {
       newState.errors = this.createSanitizedResourceFormEntity(newState.resource).validate();
+    }
+    this.setState(newState);
+  }
+
+  /**
+   * @param {string} value The authenticator key typed by the user
+   */
+  handleTotpKeyChange(value) {
+    this.setField("secret.totp.secret_key", value);
+  }
+
+  /**
+   * Set all the TOTP settings read from a QR code.
+   * @param {{secret_key: string, algorithm: string, digits: number, period: number}} totp
+   */
+  setTotp(totp) {
+    if (!this.hasTotp) {
+      this.resourceFormEntity.addSecret(ResourceEditCreateFormEnumerationTypes.TOTP, { validate: false });
+    }
+    for (const prop of ["secret_key", "algorithm", "digits", "period"]) {
+      this.resourceFormEntity.set(`secret.totp.${prop}`, totp[prop], { validate: false });
+    }
+    const resource = this.resourceFormEntity.toDto();
+    const newState = { resource };
+    if (this.state.errors) {
+      newState.errors = this.createSanitizedResourceFormEntity(resource).validate();
     }
     this.setState(newState);
   }
@@ -503,28 +532,17 @@ class ResourceEditPage extends React.Component {
                 </div>
               )}
               {this.canAddTotp && (
-                <div className={`input text ${this.hasError("totp", "secret_key") ? "error" : ""}`}>
-                  <label htmlFor="edit-totp">
-                    <Trans>Authenticator key (TOTP)</Trans>
-                  </label>
-                  <input
-                    id="edit-totp"
-                    name="secret.totp.secret_key"
-                    value={secret?.totp?.secret_key || ""}
-                    onChange={this.handleInputChange}
-                    disabled={disabled}
-                    className="fluid passbob-totp-key"
-                    maxLength="1024"
-                    type="text"
-                    autoComplete="off"
-                    spellCheck="false"
-                  />
-                  {this.hasError("totp", "secret_key") && (
-                    <div className="error-message">
-                      <Trans>The key is not valid.</Trans>
-                    </div>
-                  )}
-                </div>
+                <PassbobTotpField
+                  id="edit-totp"
+                  name="secret.totp.secret_key"
+                  value={secret?.totp?.secret_key}
+                  onChange={this.handleTotpKeyChange}
+                  onScan={this.setTotp}
+                  port={this.props.context.port}
+                  openerTabId={this.props.context.openerTabId}
+                  disabled={disabled}
+                  hasError={this.hasError("totp", "secret_key")}
+                />
               )}
             </div>
           </div>

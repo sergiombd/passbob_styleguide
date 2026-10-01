@@ -58,6 +58,14 @@ export default class ResourceEditPagePage {
     return this.field("secret.totp.secret_key");
   }
 
+  get scanButton() {
+    return this._page.container.querySelector(".passbob-scan-qr");
+  }
+
+  get scanResult() {
+    return this._page.container.querySelector(".passbob-scan-result");
+  }
+
   get submitButton() {
     return this._page.container.querySelector('button[type="submit"]');
   }
