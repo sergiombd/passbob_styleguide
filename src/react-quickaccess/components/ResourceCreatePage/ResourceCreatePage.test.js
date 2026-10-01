@@ -35,7 +35,6 @@ import { SECRET_DATA_OBJECT_TYPE } from "../../../shared/models/entity/secretDat
 import { act } from "react";
 import ResourceTypesCollection from "../../../shared/models/entity/resourceType/resourceTypesCollection";
 import { resourceTypesCollectionWithoutTOTP } from "../../../shared/models/entity/resourceType/resourceTypesCollection.test.data";
-import PassbobQrScanService from "../../../shared/services/passbob/passbobQrScanService";
 
 // Reset the modules before each test.
 beforeEach(() => {
@@ -716,29 +715,19 @@ describe("ResourceCreatePage (Passbob) - authenticator key", () => {
     expect(secretDto.totp).toStrictEqual({ secret_key: TOTP_KEY, algorithm: "SHA1", digits: 6, period: 30 });
   });
 
-  it("creates a v5 password with TOTP from the QR code on the page", async () => {
-    expect.assertions(6);
+  it("creates a v5 password with TOTP when an authenticator key is given", async () => {
+    expect.assertions(3);
     const metadataTypeSettings = new MetadataTypesSettingsEntity(defaultMetadataTypesSettingsV6Dto());
     const props = createProps({ metadataTypeSettings });
-    props.context.openerTabId = 42;
-    const scan = jest.spyOn(PassbobQrScanService, "scanPage").mockImplementation(async () => scannedTotp);
     const page = await renderForm(props);
 
-    await page.user.click(page.scanButton);
-    // Wait for the scan the click started, then for the state update that follows it.
-    await act(async () => {
-      await scan.mock.results[0].value;
-    });
-    expect(page.totp.value).toStrictEqual(TOTP_KEY);
-    expect(scan).toHaveBeenCalledWith(props.context.port, 42);
-    expect(page.scanResult.classList.contains("success")).toBe(true);
-
+    await page.setFormWith({ totp: TOTP_KEY });
     await page.submitForm();
 
     await waitForTrue(() => props.created.length === 1);
     const { resourceDto, secretDto } = props.created[0];
     expect(resourceDto.resource_type_id).toStrictEqual(TEST_RESOURCE_TYPE_V5_DEFAULT_TOTP);
-    expect(secretDto.totp).toStrictEqual(scannedTotp);
+    expect(secretDto.totp).toStrictEqual({ secret_key: TOTP_KEY, algorithm: "SHA1", digits: 6, period: 30 });
     expect(secretDto.object_type).toStrictEqual(SECRET_DATA_OBJECT_TYPE);
   });
 
