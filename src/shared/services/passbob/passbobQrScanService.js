@@ -59,21 +59,16 @@ class PassbobQrScanService {
   static async scanPage(port, tabId) {
     let dataUrl;
     try {
-      console.debug("[passbob] QR scan: screenshot requested, tab", tabId ?? "current");
       dataUrl = await PassbobQrScanService.withTimeout(port.request(CAPTURE_TAB_EVENT, tabId ?? null));
-      console.debug(`[passbob] QR scan: screenshot received, ${Math.round((dataUrl?.length || 0) / 1024)} KB`);
     } catch (error) {
-      console.warn("[passbob] QR scan: no screenshot", error);
       throw new PassbobQrScanError(QR_SCAN_ERRORS.PAGE_UNREADABLE, error);
     }
 
     let decodedText;
     try {
       const canvas = await PassbobQrScanService.drawImage(dataUrl);
-      console.debug(`[passbob] QR scan: decoding ${canvas.width}x${canvas.height}`);
       decodedText = await PassbobQrScanService.decodeInRegions(canvas);
     } catch (error) {
-      console.warn("[passbob] QR scan: no QR code", error);
       throw new PassbobQrScanError(QR_SCAN_ERRORS.NO_QR_CODE, error);
     }
 
