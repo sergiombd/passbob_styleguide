@@ -27,6 +27,11 @@ import { denyRbacContext } from "../../../shared/context/Rbac/RbacContext.test.d
 import { defaultTotpViewModelDto } from "../../../shared/models/entity/totp/totpDto.test.data";
 import { act } from "react";
 import { waitForTrue } from "../../../../test/utils/waitFor";
+import MockStorage from "../../../react-extension/test/mock/MockStorage";
+import { defaultAppContext } from "../../contexts/AppContext.test.data";
+import { resourceWithReadPermissionDto } from "../../../shared/models/entity/resource/resourceEntity.test.data";
+import UserActiveSessionEntity from "../../../shared/models/entity/session/userActiveSessionEntity";
+import { offlineUserActiveSessionDto } from "../../../shared/models/entity/session/userActiveSessionEntity.test.data";
 
 beforeEach(() => {
   jest.resetModules();
@@ -346,5 +351,44 @@ describe("ResourceViewPage (Passbob) - autofill keeps the quickaccess open", () 
     await waitForTrue(() => props.context.closeWindow.mock.calls.length > 0);
     expect(props.context.closeWindow).toHaveBeenCalledTimes(1);
     expect(props.context.storage.local.get(["passbob.settings"])["passbob.settings"].closeAfterAutofill).toBe(true);
+  });
+});
+
+describe("Passbob: edit the resource from the quickaccess", () => {
+  it("As LU, I can open the edit form of a resource I can update", async () => {
+    const props = defaultProps();
+    let page;
+    await act(async () => {
+      page = new ResourceViewPagePage(props);
+    });
+
+    const resourceId = props.context.storage.local.get(["resources"]).resources[0].id;
+    expect(page.editButton).not.toBeNull();
+    expect(page.editButton.getAttribute("href")).toBe(
+      `/webAccessibleResources/quickaccess/resources/edit/${resourceId}`,
+    );
+  });
+
+  it("As LU, I cannot edit a resource I can only read", async () => {
+    const storage = new MockStorage();
+    const resource = resourceWithReadPermissionDto();
+    storage.local.set({ resources: [resource] });
+    const props = defaultProps({ context: defaultAppContext({ storage }), initialEntries: `/${resource.id}` });
+    let page;
+    await act(async () => {
+      page = new ResourceViewPagePage(props);
+    });
+
+    expect(page.editButton).toBeNull();
+  });
+
+  it("As LU, I cannot edit a resource while offline", async () => {
+    const props = defaultProps({ activeSession: new UserActiveSessionEntity(offlineUserActiveSessionDto()) });
+    let page;
+    await act(async () => {
+      page = new ResourceViewPagePage(props);
+    });
+
+    expect(page.editButton).toBeNull();
   });
 });

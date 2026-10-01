@@ -204,3 +204,30 @@
     color: inherit;
   }
 }
+
+/* Passbob: edit button next to "View it in passbolt" on the resource. */
+.quickaccess .item-browse .back-link .passbob-edit-action {
+  margin-right: .4rem;
+}
+
+/* Passbob: edit a resource from the quickaccess. */
+.quickaccess .passbob-resource-edit {
+  .processing-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 3.2rem;
+  }
+
+  .passbob-totp-key {
+    font-family: "Source Code Pro", ui-monospace, monospace;
+  }
+
+  .passbob-edit-warning {
+    margin-top: .8rem;
+    padding: .8rem 1rem;
+    border-radius: .8rem;
+    background: var(--Palette-Warning);
+    color: var(--Text-and-icons-Main-text);
+    line-height: 1.4;
+  }
+}
