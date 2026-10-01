@@ -151,6 +151,30 @@ export default class ResourceCreatePagePage {
    * @param {object} formData a key value pairs object that contains the field name as a key (must match a getter method on this page) and the desired value
    * @returns {Promise<void>}
    */
+  /**
+   * Passbob: the authenticator key input.
+   * @returns {HTMLElement}
+   */
+  get totp() {
+    return this._page.container.querySelector('.resource-create-form [name="totp"]');
+  }
+
+  /**
+   * Passbob: the button scanning the QR code on the page.
+   * @returns {HTMLElement}
+   */
+  get scanButton() {
+    return this._page.container.querySelector(".resource-create-form .passbob-scan-qr");
+  }
+
+  /**
+   * Passbob: the result of the last scan.
+   * @returns {HTMLElement}
+   */
+  get scanResult() {
+    return this._page.container.querySelector(".resource-create-form .passbob-scan-result");
+  }
+
   async setFormWith(formData) {
     let key;
     for (key in formData) {
