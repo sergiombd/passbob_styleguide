@@ -38,11 +38,19 @@ export default class HomePagePage {
   }
 
   /**
-   * Returns the suggested resources if any
-   * @returns {NodeListOf<HTLMElement>}
+   * The sections of the home: the page's resources and the recently used ones, or the search results.
+   * @returns {NodeListOf<HTMLElement>}
+   */
+  get sections() {
+    return this._page.container.querySelectorAll(".passbob-section");
+  }
+
+  /**
+   * Returns the content of the page's resources section (or of the search results)
+   * @returns {HTMLElement}
    */
   get suggestedResourcesContent() {
-    return this._page.container.querySelectorAll(".list-section .list-items")[0];
+    return this.sections[0];
   }
 
   /**
@@ -50,7 +58,7 @@ export default class HomePagePage {
    * @returns {NodeListOf<HTLMElement>}
    */
   get suggestedResourcesEntries() {
-    return this._page.container.querySelectorAll(".list-section .list-items .suggested-resource-entry");
+    return this.sections[0]?.querySelectorAll(".passbob-row") || [];
   }
 
   /**
@@ -70,35 +78,36 @@ export default class HomePagePage {
   }
 
   /**
-   * Returns the list section filter entries
+   * Returns the search results
    * @returns {NodeListOf<Element>}
    */
   get browsedResources() {
-    return this._page.container.querySelectorAll(".list-section .list-items .browse-resource-entry");
+    return this.sections[0]?.querySelectorAll(".passbob-row") || [];
   }
 
   /**
-   * Returns the list section filter entries
-   * @returns {NodeListOf<Element>}
+   * Returns the content of the search results section
+   * @returns {HTMLElement}
    */
   get browsedResourcesContent() {
-    return this._page.container.querySelectorAll(".list-section .list-items")[0];
+    return this.sections[0];
   }
 
   /**
-   * Returns the list section title
-   * @returns {string}
-   */
-  get browseListTitle() {
-    return this._page.container.querySelectorAll(".list-section .list-title")[1].textContent;
-  }
-
-  /**
-   * Returns the list section filter entries
+   * Returns the filter chips (All excluded)
    * @returns {NodeListOf<Element>}
    */
-  get browserEntries() {
-    return this._page.container.querySelectorAll(".list-section .list-items")[1].querySelectorAll(".filter-entry");
+  get chips() {
+    return this._page.container.querySelectorAll(".passbob-chips a.passbob-chip");
+  }
+
+  /**
+   * Returns the chip leading to a route, null if none
+   * @param {string} route The end of the route
+   * @returns {HTMLElement|null}
+   */
+  getChip(route) {
+    return this._page.container.querySelector(`.passbob-chips a[href="/webAccessibleResources/quickaccess/${route}"]`);
   }
 
   /**
@@ -106,41 +115,15 @@ export default class HomePagePage {
    * @returns {boolean}
    */
   get hasTagFilterEntry() {
-    return this.browserEntries.length > 2;
+    return Boolean(this.getChip("resources/tag"));
   }
 
   /**
-   * Returns the Filters section in the browse entries
-   * @returns {HTMLElement}
-   */
-  get filtersSection() {
-    return this.browserEntries[0].querySelector(".filter-title");
-  }
-
-  /**
-   * Returns the Groups section in the browse entries
-   * @returns {HTMLElement}
-   */
-  get groupsSection() {
-    return this.browserEntries[1].querySelector(".filter-title");
-  }
-
-  /**
-   * Returns the Groups filter entry, whatever its position in the browse entries
+   * Returns the Groups filter entry
    * @returns {HTMLElement|null}
    */
   get groupsFilterEntry() {
-    return this._page.container.querySelector(
-      '.filter-entry a[href="/webAccessibleResources/quickaccess/resources/group"]',
-    );
-  }
-
-  /**
-   * Returns the tag filter entry
-   * @returns {HTMLElement}
-   */
-  get tagsSection() {
-    return this.browserEntries[2].querySelector(".filter-title");
+    return this.getChip("resources/group");
   }
 
   /**
@@ -148,7 +131,7 @@ export default class HomePagePage {
    * @returns {HTMLElement}
    */
   get createButton() {
-    return this._page.container.querySelector(".submit-wrapper #popupAction");
+    return this._page.container.querySelector(".passbob-home-footer #popupAction");
   }
 
   /**
@@ -156,25 +139,25 @@ export default class HomePagePage {
    * @returns {HTMLElement}
    */
   get useOnThisTabError() {
-    return this._page.container.querySelector(".submit-wrapper .error-message");
+    return this._page.container.querySelector(".passbob-home-error");
   }
 
   /**
-   * Simulates a click on the nth suggested resource given by the index
+   * Simulates a click on the Fill button of the nth suggested resource
    * @returns {Promise<void>}
    */
   async clickOnSuggestedResource(index) {
-    const element = this.getSuggestedResourceItem(index)?.querySelector("button");
+    const element = this.getSuggestedResourceItem(index)?.querySelector(".passbob-fill-button");
     fireEvent.click(element, { button: 0 });
     await waitFor(() => {});
   }
 
   /**
-   * Simulates a click on the nth suggested resource given by the index
+   * Simulates a click on the Fill button of the nth search result
    * @returns {Promise<void>}
    */
   async clickOnBrowsedResource(index) {
-    const element = this.getBrowsedResourceItem(index)?.querySelector(".inline-resource-entry");
+    const element = this.getBrowsedResourceItem(index)?.querySelector(".passbob-fill-button");
     fireEvent.click(element, { button: 0 });
     await waitFor(() => {});
   }

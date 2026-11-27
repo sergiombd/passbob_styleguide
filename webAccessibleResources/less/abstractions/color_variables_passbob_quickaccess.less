@@ -1,0 +1,134 @@
+/**
+ * Passbob ~ fork of the Passbolt browser extension
+ *
+ * Licensed under GNU Affero General Public License version 3 of the or any later version.
+ * Based on Passbolt, Copyright (c) Passbolt SA (https://www.passbolt.com)
+ *
+ * @license       https://opensource.org/licenses/AGPL-3.0 AGPL License
+ */
+
+/*
+ * Passbob "Quiet indigo" look of the quickaccess, default theme only.
+ *
+ * Every quickaccess color derives from the palette of color_variables_default.less, so overriding the palette, and
+ * the few roles that must not follow it, restyles every page. Light by default, dark when the OS is dark.
+ */
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("@{fonts}/geist-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("@{fonts}/geist-mono-variable.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light;
+
+  /* Neutrals, from the page background to the text */
+  --Palette-Gradient-1: #FFFFFF; // surfaces: fields, cards, menus
+  --Palette-Gradient-2: #F6F6F9; // page background
+  --Palette-Gradient-3: #E4E4EC; // dividers, hover
+  --Palette-Gradient-4: #DADAE4;
+  --Palette-Gradient-5: #CBCBD8;
+  --Palette-Gradient-6: #B5B6C6; // field borders
+  --Palette-Gradient-7: #5E5F70; // secondary text, 6:1 on the background
+  --Palette-Gradient-8: #2A2A36;
+  --Palette-Gradient-9: #17171F; // main text
+
+  /* Accent */
+  --Palette-Contrast-1: #4A43D6; // links, focus, primary buttons, 6.6:1 on white
+  --Palette-Select: #EDECFD;
+  --Palette-Select-highlight-1: #F4F3FE;
+  --Palette-Select-highlight-2: #CFCCF8;
+  --Palette-New: #F4F3FE;
+
+  --Palette-Shadow: hsla(240, 20%, 20%, 0.08);
+  --Palette-Highlight: hsla(0, 0%, 100%, 0.75);
+
+  /* Roles that do not follow the palette */
+  --Passbob-Primary-button: #4A43D6;
+  --Primary-button-Primary-button-background: var(--Passbob-Primary-button);
+  --Primary-button-Primary-button-text: #FFFFFF;
+  --Quick-Access-Primary-button-background: var(--Passbob-Primary-button);
+  --Quick-Access-Primary-button-text: #FFFFFF;
+  --Login-Login-button-background: var(--Passbob-Primary-button);
+  --Spinner-Button-spinner-background: #FFFFFF;
+  --Spinner-Button-spinner-foreground: #FFFFFF;
+  --Quick-Access-Panel-background: var(--Palette-Gradient-2);
+  --Quick-Access-Header-and-footer-background: var(--Palette-Gradient-2);
+  --Quick-Access-Filter-hover: #ECECF3;
+  --Field-Field-border: #D4D4DF;
+  --Field-Field-border-focus: var(--Palette-Contrast-1);
+
+  /* Softer corners */
+  --Section-border-radius: 1.2rem;
+  --Button-border-radius: .8rem;
+  --Login-button-radius: 1rem;
+  --Menu-radius: .8rem;
+}
+
+.passbob-quickaccess-dark() {
+  color-scheme: dark;
+
+  --Palette-Gradient-1: #1A1A23;
+  --Palette-Gradient-2: #121218;
+  --Palette-Gradient-3: #2B2B37;
+  --Palette-Gradient-4: #33333F;
+  --Palette-Gradient-5: #3E3E4C;
+  --Palette-Gradient-6: #585A6E;
+  --Palette-Gradient-7: #A2A3B4; // 7.4:1 on the background
+  --Palette-Gradient-8: #D6D6E2;
+  --Palette-Gradient-9: #EDEDF4;
+
+  --Palette-Contrast-1: #9C97FF;
+  --Palette-Contrast-2: hsla(29, 100%, 62%, 1.00);
+  --Palette-Contrast-3: hsla(8, 90%, 66%, 1.00);
+  --Palette-Contrast-4: hsla(140, 55%, 55%, 1.00);
+  --Palette-Select: #23224A;
+  --Palette-Select-highlight-1: #1E1D3A;
+  --Palette-Select-highlight-2: #3D3A7A;
+  --Palette-New: #1E1D3A;
+
+  --Palette-Success: hsla(145, 35%, 20%, 1.00);
+  --Palette-Error: hsla(0, 45%, 26%, 1.00);
+  --Palette-Warning: hsla(32, 45%, 24%, 1.00);
+  --Palette-Info: hsla(222, 40%, 26%, 1.00);
+
+  --Palette-Shadow: hsla(0, 0%, 0%, 0.40);
+  --Palette-Highlight: hsla(0, 0%, 100%, 0.06);
+
+  --Passbob-Primary-button: #5A53EA;
+  --Quick-Access-Filter-hover: #20202B;
+  --Field-Field-border: #474858;
+
+  /* Text on the orange token and on the light tooltip stays readable */
+  --Token-Token-text-and-icon: #17171F;
+  --Text-and-icons-Obfucated-text: #3E3E4C;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    .passbob-quickaccess-dark();
+  }
+}
+
+body,
+input,
+button,
+select,
+textarea {
+  font-family: "Geist", "Open Sans", system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.password-typography,
+.passbob-totp-key {
+  font-family: "Geist Mono", "Inconsolata", ui-monospace, monospace;
+}

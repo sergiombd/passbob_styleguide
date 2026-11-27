@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Passbob: a shield with a keyhole, wearing a bob (bucket hat). -->
+  <path fill="#4A43D6" d="M64 40 106 54v26c0 25-17 41-42 48C39 121 22 105 22 80V54z"/>
+  <circle cx="64" cy="75" r="11" fill="#fff"/>
+  <path fill="#fff" d="M58 80h12l4 24H54z"/>
+  <path fill="#B9B5FF" d="M38 44c1-18 10-30 26-30s25 12 26 30z"/>
+  <path fill="#4A43D6" d="M37 38h54l1 7H36z"/>
+  <path fill="#B9B5FF" d="M14 50c10-8 90-8 100 0-3 7-9 9-16 8-22-4-44-4-66 0-8 1-15-1-18-8z"/>
+</svg>

@@ -157,34 +157,6 @@
         }
     }
 }
-/* Passbob: banner shown on the resource after it was filled on the page, the popup stays open. */
-.quickaccess .item-browse .passbob-filled-banner {
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  margin: .8rem 1.6rem 0 1.6rem;
-  padding: .8rem 1rem;
-  border-radius: .8rem;
-  background: var(--Palette-Success);
-  color: var(--Text-and-icons-Main-text);
-
-  .passbob-filled-banner-text {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    line-height: 1.4;
-  }
-
-  .passbob-filled-banner-action {
-    flex-shrink: 0;
-    border: 0;
-    font-size: 1.2rem;
-    text-decoration: underline;
-    color: inherit;
-  }
-}
-
 /* Passbob: banner shown on the create form when an unsaved draft was restored. */
 .quickaccess .passbob-draft-banner {
   display: flex;
@@ -202,5 +174,67 @@
     font-weight: 600;
     text-decoration: underline;
     color: inherit;
+  }
+}
+
+/* Passbob: edit button next to "View it in passbolt" on the resource. */
+.quickaccess .item-browse .back-link .passbob-edit-action {
+  margin-right: .4rem;
+}
+
+/* Passbob: edit a resource from the quickaccess. */
+.quickaccess .passbob-resource-edit {
+  .processing-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 3.2rem;
+  }
+
+  .passbob-totp-key {
+    font-family: "Geist Mono", ui-monospace, monospace;
+  }
+
+  .passbob-edit-warning {
+    margin-top: .8rem;
+    padding: .8rem 1rem;
+    border-radius: .8rem;
+    background: var(--Palette-Warning);
+    color: var(--Text-and-icons-Main-text);
+    line-height: 1.4;
+  }
+}
+
+/* Passbob: the authenticator key field, its scan button next to it. */
+.quickaccess .passbob-totp-field .password-button-inline {
+  display: flex;
+  gap: .8rem;
+
+  .passbob-totp-key {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* Passbob: scan the TOTP QR code shown on the page. */
+.quickaccess .passbob-resource-edit,
+.quickaccess .passbob-totp-field {
+  .passbob-scan-result {
+    margin-top: .6rem;
+    padding: .6rem 1rem;
+    border-radius: .8rem;
+    font-size: 1.2rem;
+    line-height: 1.4;
+    color: var(--Text-and-icons-Main-text);
+
+    &.success {
+      background: var(--Palette-Success);
+    }
+    &.warning {
+      background: var(--Palette-Warning);
+    }
+    strong {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      letter-spacing: .04em;
+    }
   }
 }

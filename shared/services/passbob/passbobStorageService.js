@@ -9,6 +9,8 @@
 
 export const PASSBOB_SETTINGS_STORAGE_KEY = "passbob.settings";
 export const PASSBOB_LAST_VIEW_STORAGE_KEY = "passbob.lastView";
+export const PASSBOB_RECENT_STORAGE_KEY = "passbob.recent";
+export const RECENT_RESOURCES_LIMIT = 20;
 
 /**
  * How long the last visited quickaccess route is restored when the popup is reopened.
@@ -129,6 +131,38 @@ class PassbobStorageService {
   static async clearLastView(storage) {
     try {
       await storage?.session?.remove(PASSBOB_LAST_VIEW_STORAGE_KEY);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  /**
+   * The ids of the resources used last (filled or copied), most recent first. Ids only, never names or secrets.
+   * @param {object} storage The extension storage
+   * @returns {Promise<Array<string>>}
+   */
+  static async getRecentResourceIds(storage) {
+    try {
+      const data = await storage?.local?.get([PASSBOB_RECENT_STORAGE_KEY]);
+      const ids = data?.[PASSBOB_RECENT_STORAGE_KEY];
+      return Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  }
+
+  /**
+   * Put a resource first in the recently used ones.
+   * @param {object} storage The extension storage
+   * @param {string} resourceId The resource id
+   * @returns {Promise<void>}
+   */
+  static async addRecentResourceId(storage, resourceId) {
+    try {
+      const ids = await PassbobStorageService.getRecentResourceIds(storage);
+      const recent = [resourceId, ...ids.filter((id) => id !== resourceId)].slice(0, RECENT_RESOURCES_LIMIT);
+      await storage.local.set({ [PASSBOB_RECENT_STORAGE_KEY]: recent });
     } catch (error) {
       console.error(error);
     }

@@ -151,27 +151,19 @@ export default class ResourceViewPagePage {
   }
 
   /**
-   * Passbob: the banner shown after the resource was filled on the page.
-   * @returns {Element}
-   */
-  get filledBanner() {
-    return this._page.container.querySelector(".passbob-filled-banner");
-  }
-
-  /**
-   * Passbob: the "Always close after filling" link of the filled banner.
-   * @returns {Element}
-   */
-  get alwaysCloseAfterFillLink() {
-    return this._page.container.querySelector(".passbob-filled-banner-action");
-  }
-
-  /**
    * Click on the given element.
    * @param {Element} element The element to click on.
    * @returns {Promise<void>}
    */
   async click(element) {
     await this.user.click(element);
+  }
+
+  /**
+   * Passbob: the button opening the edit form of the resource.
+   * @returns {HTMLElement|null}
+   */
+  get editButton() {
+    return this._page.container.querySelector(".back-link .passbob-edit-action");
   }
 }

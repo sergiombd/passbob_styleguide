@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><style>.cls-1{fill:#e10600;}.cls-2{fill:none;}</style></defs><g id="Layer_2" data-name="Layer 2"><g id="Layer_1-2" data-name="Layer 1"><g id="Logo-without-badge"><path class="cls-1" d="M31,13.85,18,1.73a3,3,0,0,0-4.05,0L5.84,9.36a7.2,7.2,0,0,1,4.42,4.78h11a1,1,0,0,1,1,1v1.66a1,1,0,0,1-1,1H20v2.35a1,1,0,0,1-1,1H16.19a1,1,0,0,1-1-1V17.83H10.29a7.06,7.06,0,0,1-4.45,4.81L14,30.27a3,3,0,0,0,4.05,0L31,18.15A3,3,0,0,0,31,13.85Z"/><path class="cls-1" d="M3.45,12.65A3.62,3.62,0,0,0,1.93,13a3.32,3.32,0,0,0-.1,5.89,3.26,3.26,0,0,0,1.59.4A3.32,3.32,0,0,0,6.75,16,3.27,3.27,0,0,0,3.45,12.65Z"/><rect class="cls-2" width="32" height="32"/></g></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><g transform="scale(.25)"><path fill="#4A43D6" d="M64 40 106 54v26c0 25-17 41-42 48C39 121 22 105 22 80V54z"/>
+  <circle cx="64" cy="75" r="11" fill="#fff"/>
+  <path fill="#fff" d="M58 80h12l4 24H54z"/>
+  <path fill="#B9B5FF" d="M38 44c1-18 10-30 26-30s25 12 26 30z"/>
+  <path fill="#4A43D6" d="M37 38h54l1 7H36z"/>
+  <path fill="#B9B5FF" d="M14 50c10-8 90-8 100 0-3 7-9 9-16 8-22-4-44-4-66 0-8 1-15-1-18-8z"/></g></svg>

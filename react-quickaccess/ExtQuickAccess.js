@@ -11,6 +11,7 @@ import LoginPage from "./components/LoginPage/LoginPage";
 import MoreFiltersPage from "./components/MoreFiltersPage/MoreFiltersPage";
 import ResourceCreatePage from "./components/ResourceCreatePage/ResourceCreatePage";
 import ResourceViewPage from "./components/ResourceViewPage/ResourceViewPage";
+import ResourceEditPage from "./components/ResourceEditPage/ResourceEditPage";
 import Search from "./components/Search/Search";
 import { MemoryRouter as Router, Route, Switch } from "react-router-dom";
 import AnimatedSwitch from "./components/AnimatedSwitch/AnimatedSwitch";
@@ -111,7 +112,12 @@ class ExtQuickAccess extends React.Component {
   get defaultState() {
     return {
       account: null, // The account
-      lastView: undefined, // Passbob: the last view to restore (null if none), undefined while loading
+      /*
+       * Passbob: the last view to restore (null if none), undefined while loading. A window opened for a feature
+       * (login, passphrase, credentials to save) never restores a view: it is known from the start, the state cannot
+       * be set from the constructor.
+       */
+      lastView: this.props.bootstrapFeature ? null : undefined,
       // Passphrase
       passphraseRequired: false,
       passphraseRequestId: "",
@@ -214,18 +220,21 @@ class ExtQuickAccess extends React.Component {
   }
 
   /**
-   * Is ready
-   * @return {boolean}
-   */
-  /**
    * Passbob: get the last quickaccess view to restore, only for a plain opening of the popup.
    * @returns {Promise<void>}
    */
   async getLastView() {
-    const lastView = this.props.bootstrapFeature ? null : await PassbobStorageService.getLastView(this.props.storage);
+    if (this.props.bootstrapFeature) {
+      return;
+    }
+    const lastView = await PassbobStorageService.getLastView(this.props.storage);
     this.setState({ lastView });
   }
 
+  /**
+   * Is ready
+   * @return {boolean}
+   */
   isReady() {
     return this.state.account !== null && this.state.lastView !== undefined;
   }
@@ -380,6 +389,10 @@ class ExtQuickAccess extends React.Component {
                                         <PrivateRoute
                                           path="/webAccessibleResources/quickaccess/resources/view/:id"
                                           component={ResourceViewPage}
+                                        />
+                                        <PrivateRoute
+                                          path="/webAccessibleResources/quickaccess/resources/edit/:id"
+                                          component={ResourceEditPage}
                                         />
                                         <PrivateRoute
                                           exact

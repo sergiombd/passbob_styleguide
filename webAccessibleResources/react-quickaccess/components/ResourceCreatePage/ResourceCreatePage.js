@@ -39,6 +39,9 @@ import {
   RESOURCE_TYPE_PASSWORD_AND_DESCRIPTION_SLUG,
   RESOURCE_TYPE_V5_DEFAULT_SLUG,
 } from "../../../shared/models/entity/resourceType/resourceTypeSchemasDefinition";
+import PassbobCreateResourceTypeService from "../../../shared/services/passbob/passbobCreateResourceTypeService";
+import TotpEntity from "../../../shared/models/entity/totp/totpEntity";
+import PassbobTotpField from "../PassbobTotpField/PassbobTotpField";
 import ResourceViewModelFactory from "../../../shared/models/resource/ResourceViewModelFactory";
 import CaretLeftSVG from "../../../img/svg/caret_left.svg";
 import CloseSVG from "../../../img/svg/close.svg";
@@ -81,6 +84,8 @@ class ResourceCreatePage extends React.Component {
       generatorSettings: null,
       processing: false,
       draftRestored: false, // Passbob: the form was filled from an unsaved draft
+      totp: null, // Passbob: the authenticator key and its settings {secret_key, algorithm, digits, period}
+      hasTotpError: false, // Passbob: the authenticator key is not valid
     };
   }
 
@@ -97,6 +102,8 @@ class ResourceCreatePage extends React.Component {
     this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
     this.save = this.save.bind(this);
     this.handleDiscardDraftClick = this.handleDiscardDraftClick.bind(this);
+    this.handleTotpKeyChange = this.handleTotpKeyChange.bind(this);
+    this.handleTotpScan = this.handleTotpScan.bind(this);
   }
 
   /**
@@ -116,7 +123,9 @@ class ResourceCreatePage extends React.Component {
    * @param {object} prevState The previous state
    */
   componentDidUpdate(prevProps, prevState) {
-    if (this.hasUserEdited && prevState.resourceViewModel !== this.state.resourceViewModel) {
+    const hasFormChanged =
+      prevState.resourceViewModel !== this.state.resourceViewModel || prevState.totp !== this.state.totp;
+    if (this.hasUserEdited && hasFormChanged) {
       clearTimeout(this.draftSaveTimeout);
       this.draftSaveTimeout = setTimeout(() => this.saveDraft(), DRAFT_SAVE_DELAY_IN_MS);
       this.isDraftSavePending = true;
@@ -138,11 +147,15 @@ class ResourceCreatePage extends React.Component {
   async saveDraft() {
     this.isDraftSavePending = false;
     const { name, uri, username, password } = this.state.resourceViewModel;
+    const secrets = { password: password || "" };
+    if (this.state.totp?.secret_key) {
+      secrets.totp = JSON.stringify(this.state.totp);
+    }
     try {
       await this.props.context.port.request("passbob.draft.save", {
         pathname: CREATE_ROUTE,
         fields: { name: name || "", uri: uri || "", username: username || "" },
-        secrets: { password: password || "" },
+        secrets,
       });
     } catch (error) {
       console.error(error);
@@ -167,6 +180,7 @@ class ResourceCreatePage extends React.Component {
         uri: draft.fields.uri || "",
         username: draft.fields.username || "",
         password: draft.secrets.password || "",
+        totp: draft.secrets.totp ? JSON.parse(draft.secrets.totp) : null,
       };
     } catch (error) {
       // The user may cancel the passphrase request: fall back to an empty form.
@@ -198,7 +212,7 @@ class ResourceCreatePage extends React.Component {
   async handleDiscardDraftClick(event) {
     event.preventDefault();
     await this.clearDraft();
-    this.setState({ draftRestored: false });
+    this.setState({ draftRestored: false, totp: null, hasTotpError: false });
     await this.initResourceViewModel({ skipDraft: true });
   }
 
@@ -224,7 +238,9 @@ class ResourceCreatePage extends React.Component {
 
     await this.focusFirstEmptyField(resourceViewModel);
 
-    this.setState({ resourceViewModel, passwordEntropy });
+    // Passbob: a TOTP kept by the draft, or by the password generator and the confirmation pages.
+    const totp = resourceViewModelDto.totp?.secret_key ? resourceViewModelDto.totp : null;
+    this.setState({ resourceViewModel, passwordEntropy, totp });
   }
 
   /**
@@ -269,6 +285,7 @@ class ResourceCreatePage extends React.Component {
    */
   createInputRef() {
     this.nameInputRef = React.createRef();
+    this.totpInputRef = React.createRef();
     this.uriInputRef = React.createRef();
     this.usernameInputRef = React.createRef();
     this.passwordInputRef = React.createRef();
@@ -422,6 +439,12 @@ class ResourceCreatePage extends React.Component {
       return;
     }
 
+    if (!this.validateTotp()) {
+      this.setState({ processing: false });
+      this.totpInputRef.current?.focus();
+      return;
+    }
+
     if (!this.isMinimumRequiredEntropyReached()) {
       this.handleComfirmPasswordCreation(ConfirmCreatePageRuleVariations.MINIMUM_ENTROPY);
       return;
@@ -467,8 +490,9 @@ class ResourceCreatePage extends React.Component {
    * @returns {Promise<void>}
    */
   async save() {
-    const resourceDto = this.state.resourceViewModel.toResourceDto();
-    const secretDto = this.state.resourceViewModel.toSecretDto();
+    const resourceViewModel = this.getResourceViewModelToSave();
+    const resourceDto = resourceViewModel.toResourceDto();
+    const secretDto = resourceViewModel.toSecretDto();
     let resource;
 
     try {
@@ -590,6 +614,77 @@ class ResourceCreatePage extends React.Component {
   }
 
   /**
+   * Passbob: the TOTP resource type to create when an authenticator key is given, null if the organization has none.
+   * @returns {ResourceTypeEntity|null}
+   */
+  get totpResourceType() {
+    return PassbobCreateResourceTypeService.getResourceType(
+      this.props.resourceTypes,
+      this.props.metadataTypeSettings,
+      true,
+    );
+  }
+
+  /**
+   * Passbob: the key typed by the user, with the default settings the first time.
+   * @param {string} value The authenticator key
+   */
+  handleTotpKeyChange(value) {
+    this.hasUserEdited = true;
+    const totp = { ...(this.state.totp || TotpEntity.createFromDefault({}, { validate: false }).toDto()) };
+    totp.secret_key = value;
+    this.setState({ totp, hasTotpError: false });
+  }
+
+  /**
+   * Passbob: the TOTP read from a QR code on the page.
+   * @param {{secret_key: string, algorithm: string, digits: number, period: number}} totp
+   */
+  handleTotpScan(totp) {
+    this.hasUserEdited = true;
+    this.setState({ totp, hasTotpError: false });
+  }
+
+  /**
+   * Passbob: an empty key means no TOTP, otherwise it must be a valid base32 key.
+   * @returns {boolean}
+   */
+  validateTotp() {
+    if (!this.state.totp?.secret_key) {
+      return true;
+    }
+    try {
+      new TotpEntity(this.state.totp);
+      return true;
+    } catch {
+      this.setState({ hasTotpError: true });
+      return false;
+    }
+  }
+
+  /**
+   * Passbob: the resource to create, of the TOTP resource type when an authenticator key is given.
+   * @returns {ResourceViewModel}
+   */
+  getResourceViewModelToSave() {
+    if (!this.state.totp?.secret_key || !this.totpResourceType) {
+      return this.state.resourceViewModel;
+    }
+    const { name, uri, username, password, description, expired, folder_parent_id } = this.state.resourceViewModel;
+    return ResourceViewModelFactory.createFromResourceTypeAndResourceViewModelDto(this.totpResourceType, {
+      name,
+      uri,
+      username,
+      password,
+      description,
+      expired,
+      folder_parent_id,
+      resource_type_id: this.totpResourceType.id,
+      totp: new TotpEntity(this.state.totp).toDto(),
+    });
+  }
+
+  /**
    * Handles click on "regenerate" a password
    */
   handleGeneratePasswordButtonClick() {
@@ -634,6 +729,7 @@ class ResourceCreatePage extends React.Component {
       username: this.state.resourceViewModel.username,
       uri: this.state.resourceViewModel.uri,
       password: this.state.resourceViewModel.password,
+      totp: this.state.totp,
     };
     this.props.prepareResourceContext.onPrepareResource(resource);
   }
@@ -821,6 +917,20 @@ class ResourceCreatePage extends React.Component {
                   <div className="error-message">{this.state.errors.getError("password", "api-validation")}</div>
                 )}
               </div>
+              {this.totpResourceType && (
+                <PassbobTotpField
+                  id="totp"
+                  name="totp"
+                  value={this.state.totp?.secret_key}
+                  onChange={this.handleTotpKeyChange}
+                  onScan={this.handleTotpScan}
+                  port={this.props.context.port}
+                  openerTabId={this.props.context.openerTabId}
+                  disabled={this.state.processing}
+                  hasError={this.state.hasTotpError}
+                  inputRef={this.totpInputRef}
+                />
+              )}
             </div>
           </div>
           <div className="submit-wrapper input">

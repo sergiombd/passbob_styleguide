@@ -141,4 +141,33 @@ describe("PassbobStorageService", () => {
       await expect(PassbobStorageService.getLastView(storage)).resolves.toBeNull();
     });
   });
+
+  describe("::recent resources", () => {
+    it("keeps the last used resources first, without duplicates", async () => {
+      const storage = createStorage();
+      await PassbobStorageService.addRecentResourceId(storage, "a");
+      await PassbobStorageService.addRecentResourceId(storage, "b");
+      await PassbobStorageService.addRecentResourceId(storage, "a");
+
+      expect(await PassbobStorageService.getRecentResourceIds(storage)).toStrictEqual(["a", "b"]);
+    });
+
+    it("keeps the 20 most recent only", async () => {
+      const storage = createStorage();
+      for (let i = 0; i < 25; i++) {
+        await PassbobStorageService.addRecentResourceId(storage, `id-${i}`);
+      }
+
+      const ids = await PassbobStorageService.getRecentResourceIds(storage);
+      expect(ids).toHaveLength(20);
+      expect(ids[0]).toStrictEqual("id-24");
+    });
+
+    it("ignores unexpected stored values", async () => {
+      const storage = createStorage();
+      await storage.local.set({ "passbob.recent": "not a list" });
+
+      expect(await PassbobStorageService.getRecentResourceIds(storage)).toStrictEqual([]);
+    });
+  });
 });

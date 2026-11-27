@@ -33,6 +33,7 @@ import MetadataTypesSettingsEntity from "../../../shared/models/entity/metadata/
 import { withMetadataTypesSettingsLocalStorage } from "../../../shared/context/MetadataTypesSettingsLocalStorageContext/MetadataTypesSettingsLocalStorageContext";
 import ResourceMetadataEntity from "../../../shared/models/entity/resource/metadata/resourceMetadataEntity";
 import { SECRET_DATA_OBJECT_TYPE } from "../../../shared/models/entity/secretData/secretDataEntity";
+import PassbobCreateResourceTypeService from "../../../shared/services/passbob/passbobCreateResourceTypeService";
 
 /**
  * The component display error variations.
@@ -99,11 +100,20 @@ class ConfirmCreatePage extends React.PureComponent {
    */
   async save() {
     const isV5 = this.props.metadataTypeSettings.isDefaultResourceTypeV5;
-    const resourceTypeId = isV5
+    const preparedResource = this.props.prepareResourceContext.consumePreparedResource();
+    // Passbob: the authenticator key given in the create form.
+    const totpResourceType = preparedResource.totp?.secret_key
+      ? PassbobCreateResourceTypeService.getResourceType(
+          this.props.resourceTypes,
+          this.props.metadataTypeSettings,
+          true,
+        )
+      : null;
+    const defaultResourceTypeId = isV5
       ? this.props.resourceTypes?.getFirstBySlug(RESOURCE_TYPE_V5_DEFAULT_SLUG)?.id
       : this.props.resourceTypes?.getFirstBySlug(RESOURCE_TYPE_PASSWORD_AND_DESCRIPTION_SLUG)?.id;
+    const resourceTypeId = totpResourceType?.id || defaultResourceTypeId;
 
-    const preparedResource = this.props.prepareResourceContext.consumePreparedResource();
     const resourceDto = {
       resource_type_id: resourceTypeId,
       expired: this.props.passwordExpiryContext.getDefaultExpirationDate(),
@@ -118,6 +128,9 @@ class ConfirmCreatePage extends React.PureComponent {
       password: preparedResource.password,
       description: "",
     };
+    if (totpResourceType) {
+      secretDto.totp = preparedResource.totp;
+    }
 
     if (isV5) {
       resourceDto.metadata.object_type = ResourceMetadataEntity.METADATA_OBJECT_TYPE;
