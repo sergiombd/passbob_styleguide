@@ -89,7 +89,6 @@ class ResourceViewPage extends React.Component {
     this.handleCopyPasswordClick = this.handleCopyPasswordClick.bind(this);
     this.handleGoToUrlClick = this.handleGoToUrlClick.bind(this);
     this.handleUseOnThisTabClick = this.handleUseOnThisTabClick.bind(this);
-    this.handleAlwaysCloseAfterFillClick = this.handleAlwaysCloseAfterFillClick.bind(this);
     this.handleViewPasswordButtonClick = this.handleViewPasswordButtonClick.bind(this);
     this.handleCopyTotpClick = this.handleCopyTotpClick.bind(this);
     this.handlePreviewTotpButtonClick = this.handlePreviewTotpButtonClick.bind(this);
@@ -498,17 +497,6 @@ class ResourceViewPage extends React.Component {
   }
 
   /**
-   * Passbob: the user prefers the popup to close after filling.
-   * @param {Event} event The click event
-   * @returns {Promise<void>}
-   */
-  async handleAlwaysCloseAfterFillClick(event) {
-    event.preventDefault();
-    await PassbobStorageService.updateSettings(this.props.context.storage, { closeAfterAutofill: true });
-    this.props.context.closeWindow();
-  }
-
-  /**
    * Handle click on additional uris
    */
   handleClickAdditionalUrisSection() {
@@ -615,26 +603,6 @@ class ResourceViewPage extends React.Component {
             </span>
           </a>
         </div>
-        {this.state.filled && (
-          <div className="passbob-filled-banner" role="status">
-            <div className="passbob-filled-banner-text">
-              <strong>
-                <Trans>Filled on this page</Trans>
-              </strong>
-              <span>
-                <Trans>Didn’t work? Copy any field below.</Trans>
-              </span>
-            </div>
-            <a
-              href="#"
-              role="button"
-              className="passbob-filled-banner-action"
-              onClick={this.handleAlwaysCloseAfterFillClick}
-            >
-              <Trans>Always close after filling</Trans>
-            </a>
-          </div>
-        )}
         <ul className="properties">
           {!this.isStandaloneTotpResource && (
             <>
